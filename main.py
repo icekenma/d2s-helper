@@ -104,7 +104,7 @@ class App(tk.Tk):
         self.hot.daemon = True
         self.hot.start()
         self.protocol("WM_DELETE_WINDOW", self._close)
-        self.restarting, self.upd_seen = False, None
+        self.restarting, self.upd_seen, self.scanning = False, None, False
         self.upd = Updater(BASE, lambda m: self.q.put(("log", m)))
         self.upd.start()
         self.title("D2S Helper v%s" % local_version(BASE))
@@ -473,8 +473,8 @@ class App(tk.Tk):
 
     def _maybe_restart(self):
         """A new version was copied in: restart at a quiet moment (stopped, or in town between runs)."""
-        if not self.upd.ready or self.restarting:
-            return
+        if not self.upd.ready or self.restarting or getattr(self, "scanning", False):
+            return                                   # (never in the middle of a gear scan)
         if self.upd_seen is None:
             self.upd_seen = time.time()
         st = getattr(self.engine, "state", None) or {}
@@ -491,11 +491,12 @@ class App(tk.Tk):
     def _relaunch_self(self):
         import sys
         self._close(quiet=True)
-        flags = 0x08000000 if os.name == "nt" else 0        # CREATE_NO_WINDOW for the console copy
-        exe = sys.executable
-        if os.name == "nt" and exe.lower().endswith("python.exe") and os.path.exists(exe[:-10] + "pythonw.exe"):
-            exe = exe[:-10] + "pythonw.exe"
-        subprocess.Popen([exe, os.path.join(BASE, "main.py")], cwd=BASE, creationflags=flags)
+        bat = os.path.join(BASE, "run.bat")
+        if os.name == "nt" and os.path.exists(bat):
+            # the same way it is normally started (a console that stays open if something goes wrong)
+            subprocess.Popen(["cmd", "/c", "start", "", bat], cwd=BASE, creationflags=0x00000008)  # DETACHED
+        else:
+            subprocess.Popen([sys.executable, os.path.join(BASE, "main.py")], cwd=BASE)
         os._exit(0)
 
     def _close(self, quiet=False):

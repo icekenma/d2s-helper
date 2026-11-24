@@ -9,7 +9,7 @@ import zipfile
 import cv2
 import numpy as np
 
-from . import sorter
+from . import paths, sorter
 
 # worn items on the right-hand panel (800x600 layout)
 EQUIP = [("투구", (561, 93)), ("목걸이", (620, 106)), ("무기", (447, 159)), ("갑옷", (561, 178)),
@@ -27,13 +27,31 @@ SCAN_TABS = sorter.STASH_ORDER
 # the skills picked in a run: icons at the top left (5 x 5), shown only while a run is on
 SKILL_CELLS = [(174 + 25 * c, 17 + 25 * r) for r in range(5) for c in range(5)]
 PENDING = {"dir": None}          # a scan waiting for the next run's skills (set after a scan in town)
+_PFILE = paths.p("pending_skills.txt")
+try:
+    with open(_PFILE, "r", encoding="utf-8") as _f:
+        PENDING["dir"] = _f.read().strip() or None      # (kept across a restart)
+except OSError:
+    pass
+
+
+def _set_pending(d):
+    PENDING["dir"] = d
+    try:
+        if d:
+            with open(_PFILE, "w", encoding="utf-8") as f:
+                f.write(d)
+        elif os.path.exists(_PFILE):
+            os.remove(_PFILE)
+    except OSError:
+        pass
 
 
 def scan_skills(io, log):
     """During a run (called once after the boss dies): the info box of every skill icon, added to the last
     scan's folder and ZIP."""
     out = PENDING.get("dir")
-    PENDING["dir"] = None
+    _set_pending(None)
     if not out or not os.path.isdir(out):
         return
     f = io.grab()
@@ -317,7 +335,7 @@ def scan(io, base_dir, log, stop=None):
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         for fn in sorted(os.listdir(out)):
             z.write(os.path.join(out, fn), fn)
-    PENDING["dir"] = out
+    _set_pending(out)
     log("장비 스캔 끝: 아이템 %d개 -> %s" % (count[0], zpath))
     log("장비 스캔: 다음 판 보스 처치 직후 스킬 정보창도 찍어서 이 ZIP에 더함 (그 뒤 보내 주세요)")
     return zpath
