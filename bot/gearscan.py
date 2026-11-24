@@ -60,12 +60,21 @@ def scan(io, base_dir, log, stop=None):
         return io.grab()
 
     def hover(pt, base):
-        io.move(*geo.raw(*pt))
-        time.sleep(0.25)
-        hov = io.grab()
-        if hov is None or base is None:
+        """Rest the cursor on pt until the info box shows (it can take a moment; with the game behind other
+        windows the box may flicker, so the cursor is nudged and the screen read again)."""
+        if base is None:
             return None
-        return sorter.tooltip_crop(base, hov, geo)
+        x, y = geo.raw(*pt)
+        for i in range(6):
+            io.move(x + (i % 2), y)
+            time.sleep(0.06 + 0.05 * i)
+            hov = io.grab()
+            if hov is None:
+                continue
+            tip = sorter.tooltip_crop(base, hov, geo)
+            if tip is not None:
+                return tip
+        return None
 
     def keep(tip, name):
         for t in tips:
@@ -77,15 +86,34 @@ def scan(io, base_dir, log, stop=None):
         return True
 
     # 1) worn items
-    base = park()
-    _save(os.path.join(out, "000_화면_착용.jpg"), base)
-    worn = 0
-    for name, pt in EQUIP:
-        if halted():
-            break
-        tip = hover(pt, base)
-        if tip is not None and keep(tip, "착용_" + name):
-            worn += 1
+    def worn_pass():
+        b = park()
+        _save(os.path.join(out, "000_화면_착용.jpg"), b)
+        k = 0
+        for name, pt in EQUIP:
+            if halted():
+                break
+            tip = hover(pt, b)
+            if tip is not None and keep(tip, "착용_" + name):
+                k += 1
+        return k
+
+    prev_fg = None
+    worn = worn_pass()
+    if worn == 0 and not halted() and not io.front():
+        # with the game behind other windows its info boxes do not show: bring it forward for the scan only
+        try:
+            import ctypes
+            from . import win
+            prev_fg = ctypes.windll.user32.GetForegroundWindow()
+            if win.focus(io.hwnd):
+                log("장비 스캔: 게임 창이 뒤에 있으면 정보창이 안 떠서, 스캔하는 동안만 게임 창을 앞으로 가져옴")
+                time.sleep(0.5)
+                worn = worn_pass()
+            else:
+                prev_fg = None
+        except Exception:
+            prev_fg = None
     log("장비 스캔: 착용 %d개" % worn)
 
     # 2) the bags
@@ -143,6 +171,13 @@ def scan(io, base_dir, log, stop=None):
     except Exception:
         pass
     park()
+
+    if prev_fg:
+        try:
+            from . import win
+            win.focus(prev_fg)                 # give the front back to the window that had it
+        except Exception:
+            pass
 
     zpath = out + ".zip"
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
