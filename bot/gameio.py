@@ -126,6 +126,17 @@ class GameIO:
         else:
             bg.move(self.hwnd, int(x), int(y), held=self.dragging == "bg")
 
+    def scroll(self, x, y, notches):
+        """Mouse wheel over client point (x, y): notches > 0 up, < 0 down."""
+        if not self.rect:
+            return
+        if self.front():
+            self.mouse.position = (self.rect[0] + int(x), self.rect[1] + int(y))
+            time.sleep(0.03)
+            self.mouse.scroll(0, int(notches))
+        else:
+            bg.wheel(self.hwnd, self.rect[0] + int(x), self.rect[1] + int(y), notches)
+
     def click(self, x, y, mod=None):
         if not self.rect:
             return

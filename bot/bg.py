@@ -116,6 +116,12 @@ def move(hwnd, x, y, held=False):
     user32.PostMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON if held else 0, _lparam(x, y))
 
 
+def wheel(hwnd, sx, sy, notches):
+    """Mouse wheel at screen point (sx, sy); notches > 0 scrolls up, < 0 down."""
+    delta = int(120 * notches) & 0xFFFF
+    user32.PostMessageW(hwnd, 0x020A, delta << 16, ((int(sy) & 0xFFFF) << 16) | (int(sx) & 0xFFFF))
+
+
 def button(hwnd, x, y, down):
     user32.PostMessageW(hwnd, WM_LBUTTONDOWN if down else WM_LBUTTONUP, MK_LBUTTON if down else 0,
                         _lparam(x, y))

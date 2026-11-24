@@ -16,6 +16,11 @@ EQUIP = [("투구", (561, 93)), ("목걸이", (620, 106)), ("무기", (447, 159)
          ("방패_화살통", (678, 159)), ("장갑", (447, 265)), ("반지1", (506, 249)), ("허리띠", (561, 249)),
          ("반지2", (620, 249)), ("신발", (678, 265))]
 STASH_X, STASH_Y, STASH_COLS, STASH_ROWS = 95, 65, 10, 12
+# the 고유 (collection) tab: kind icons (13 + 12) and the card list (3 columns, scrolls)
+UNIQ_CATS = [(108 + 22.3 * i, 75) for i in range(13)] + [(108 + 22.3 * i, 101) for i in range(12)]
+UNIQ_LIST = (94, 136, 373, 412)            # x0, y0, x1, y1
+UNIQ_COLS = (140, 235, 328)
+UNIQ_LIST_CENTER = (235, 270)
 SCAN_TABS = sorter.STASH_ORDER
 
 
@@ -59,13 +64,13 @@ def scan(io, base_dir, log, stop=None):
         time.sleep(0.25)
         return io.grab()
 
-    def hover(pt, base):
+    def hover(pt, base, tries=6):
         """Rest the cursor on pt until the info box shows (it can take a moment; with the game behind other
         windows the box may flicker, so the cursor is nudged and the screen read again)."""
         if base is None:
             return None
         x, y = geo.raw(*pt)
-        for i in range(6):
+        for i in range(tries):
             io.move(x + (i % 2), y)
             time.sleep(0.06 + 0.05 * i)
             hov = io.grab()
@@ -129,6 +134,66 @@ def scan(io, base_dir, log, stop=None):
                 bag += 1
     log("장비 스캔: 인벤토리 %d개" % bag)
 
+    def scan_unique():
+        n_ = geo.normalize(io.grab())
+        if not sorter.stash_open(n_):
+            io.click(*geo.raw(*sorter.ui_tabs(n_)[1]))
+            time.sleep(0.5)
+            park()
+            n_ = geo.normalize(io.grab())
+        tabs = sorter.stash_tabs(n_)
+        io.click(*geo.raw(*tabs["고유"]))
+        time.sleep(0.7)
+        b = park()
+        _save(os.path.join(out, "000_화면_보관함_고유.jpg"), b)
+        total = 0
+        lx, ly = UNIQ_LIST_CENTER
+        for ci, (cx, cy) in enumerate(UNIQ_CATS):
+            if halted():
+                return
+            io.click(*geo.raw(cx, cy))
+            time.sleep(0.6)
+            for _ in range(4):                       # to the top of the list
+                io.scroll(*geo.raw(lx, ly), 15)
+                time.sleep(0.12)
+            time.sleep(0.3)
+            got, page, prev = 0, 0, None
+            while page < 60 and not halted():
+                b = park()
+                nb = geo.normalize(b)
+                lst = nb[UNIQ_LIST[1]:UNIQ_LIST[3], UNIQ_LIST[0]:UNIQ_LIST[2]]
+                # the list itself too (names and which are collected), page by page
+                _save(os.path.join(out, "고유_%02d_목록_%02d.jpg" % (ci + 1, page + 1)), nb[40:420, 88:392])
+                for yy in range(UNIQ_LIST[1] + 22, UNIQ_LIST[3] - 10, 50):
+                    for xx in UNIQ_COLS:
+                        if halted():
+                            return
+                        tip = hover((xx, yy), b, tries=3)
+                        if tip is not None and keep(tip, "고유_%02d" % (ci + 1)):
+                            got += 1
+                # next page: wheel down until the list has moved about a page
+                moved = 0.0
+                for _ in range(6):
+                    io.scroll(*geo.raw(lx, ly), -2)
+                    time.sleep(0.35)
+                    io.move(*geo.raw(*sorter.PARK))
+                    time.sleep(0.15)
+                    nb2 = geo.normalize(io.grab())
+                    lst2 = nb2[UNIQ_LIST[1]:UNIQ_LIST[3], UNIQ_LIST[0]:UNIQ_LIST[2]]
+                    if float(np.abs(lst2.astype(int) - lst.astype(int)).mean()) < 2.0:
+                        break                        # nothing moved: the end of the list
+                    (_, sy), _ = cv2.phaseCorrelate(cv2.cvtColor(lst, cv2.COLOR_BGR2GRAY).astype(np.float32),
+                                                    cv2.cvtColor(lst2, cv2.COLOR_BGR2GRAY).astype(np.float32))
+                    moved = abs(sy)
+                    if moved > 0.55 * (UNIQ_LIST[3] - UNIQ_LIST[1]) or moved < 1:
+                        break
+                if float(np.abs(lst2.astype(int) - lst.astype(int)).mean()) < 2.0:
+                    break
+                page += 1
+            total += got
+            log("장비 스캔: 고유 %d/%d번째 종류 %d개" % (ci + 1, len(UNIQ_CATS), got))
+        log("장비 스캔: 고유 탭 %d개" % total)
+
     # 3) the stash tabs
     for tab in SCAN_TABS:
         if halted():
@@ -171,6 +236,10 @@ def scan(io, base_dir, log, stop=None):
     except Exception:
         pass
     park()
+
+    # 4) the 고유 (collection) tab: every category, the whole list scrolled through
+    if not halted():
+        scan_unique()
 
     if prev_fg:
         try:
