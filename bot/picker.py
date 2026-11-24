@@ -775,7 +775,7 @@ class Picker:
             self._go_smith(frame, s, now, me, portal, mark, "인벤토리 정리")
             return
         if (self.over_since is not None and self.state.get("cleaned", 0) > self.over_since
-                and self.exit_tries < 3):
+                and self.exit_tries < 6):
             self._exit_town(now)                       # tidied up at the smith: Esc -> town -> next run
             return
         self._portal_now(frame, s, now, me, portal, mark)
@@ -790,15 +790,16 @@ class Picker:
         if self.exit_tries == 1:
             self.log("창고 정리 끝: Esc로 마을로 가서 다음 판")
         if sorter.leave_via_menu(self.io, self.log, lambda: self.io.key(Key.esc),
-                                 {"down": Key.down, "up": Key.up, "enter": Key.enter}):
+                                 {"down": Key.down, "up": Key.up, "enter": Key.enter, "tab": Key.tab},
+                                 attempt=self.exit_tries):
             self.state["over"] = False
             self.state["run_reset"] = time.time()
             self.frame = None
             self.log("마을로 나감: 저장 후 나가기 (다음 판)")
             return
         self.frame = None
-        if self.exit_tries >= 3:
-            self.log("Esc 메뉴의 '저장 후 나가기'를 찾지 못함: 포탈로 다음 판")
+        if self.exit_tries >= 6:
+            self.log("Esc 메뉴로 마을에 가지 못함 (6번): 포탈로 다음 판")
 
     def _portal_now(self, frame, s, now, me, portal, mark):
         self.npc_since = None

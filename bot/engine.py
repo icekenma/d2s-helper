@@ -275,7 +275,8 @@ class Engine(threading.Thread):
             st["progress_at"] = now - 115          # if it fails, try again soon (30 s later)
             for attempt in range(3):
                 if sorter.leave_via_menu(io, self.log, lambda: self._tap(Key.esc),
-                                         {"down": Key.down, "up": Key.up, "enter": Key.enter}):
+                                         {"down": Key.down, "up": Key.up, "enter": Key.enter, "tab": Key.tab},
+                                         attempt=attempt + 1):
                     st["over"] = False
                     st["run_reset"] = time.time()
                     st["progress_at"] = time.time()

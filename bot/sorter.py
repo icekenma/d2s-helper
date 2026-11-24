@@ -20,7 +20,7 @@ TAB_SHOP2, TAB_STASH2 = (136, 17), (345, 17)            # new window (2026-11): 
 STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}
 PARK = (400, 500)   # empty stone area between the two panels' bottoms
 # name -> (file, expected top-left x, y)
-MARKS = {"confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
+MARKS = {"menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
          "personal": ("stash_personal.png", 104, 40), "shop": ("shop.png", 100, 66),
          "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70)}
 FORGE_OK = (214, 321)            # the check button under the anvil
@@ -942,6 +942,29 @@ MENU_EXIT = (400, 380)                    # "저장 후 나가기", the last lin
 MENU_PENTAS = ((259, 378), (542, 378))    # the red pentagrams beside it while the cursor is on it
 
 
+MENU_ROWS = (172, 224, 276, 329, 381)      # the five lines of the Esc menu (the last: 저장 후 나가기)
+
+
+def lit_row(norm):
+    """Which menu line has the pentagrams beside it: 0..4, or None."""
+    if norm is None:
+        return None
+    roi = norm[110:430].astype(np.int32)
+    b, g, r = roi[:, :, 0], roi[:, :, 1], roi[:, :, 2]
+    m = ((r > 150) & (g < 70) & (b < 70)).astype(np.uint8)
+    n, _, st, cen = cv2.connectedComponentsWithStats(cv2.dilate(m, np.ones((5, 5), np.uint8)))
+    blobs = [(cen[i][0], cen[i][1] + 110) for i in range(1, n) if 150 <= st[i][4] <= 2500
+             and 15 <= st[i][2] <= 60 and 15 <= st[i][3] <= 60]
+    for l in blobs:
+        for r_ in blobs:
+            if l[0] < 390 < 410 < r_[0] and abs(l[1] - r_[1]) < 10:
+                yy = (l[1] + r_[1]) / 2.0
+                i = min(range(len(MENU_ROWS)), key=lambda k: abs(MENU_ROWS[k] - yy))
+                if abs(MENU_ROWS[i] - yy) < 20:
+                    return i
+    return None
+
+
 def esc_menu_open(norm):
     """True when the Esc menu is up, whichever line is highlighted: a red pentagram on each side of one
     line (left and right of the middle, on the same height)."""
@@ -969,14 +992,23 @@ def out_of_stage(frame):
     return spot.area_mask(crop, (h - top) / 600.0).sum() < 1500
 
 
-def leave_via_menu(io, log, open_menu, keys=None, left=None):
+def menu_open(norm):
+    """The Esc menu is up: its "저장 후 나가기" line, or a pair of red pentagrams beside a line."""
+    if norm is None:
+        return False
+    if "menu_exit" in _marks and _seen("menu_exit", norm, pad=30) >= 0.55:
+        return True
+    return esc_menu_open(norm)
+
+
+def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
     """Esc menu -> "저장 후 나가기" -> (new game) "게임을 저장하고 나갈까요?" -> "저장 후 나가기".
-    open_menu() presses Esc. keys: {"down", "up", "enter"} key objects for io.key. left(frame): True once
-    the game is out of the stage (back in town / loading). Mouse clicks may not reach a menu when the game
-    is behind other windows (the highlight does not follow), so the keyboard is used first and the result
-    is always checked: a closed menu alone is no proof (it may have been "게임으로 돌아가기").
-    -> True when the stage was left."""
+    open_menu() presses Esc. keys: {"down", "up", "enter"} for io.key. Each attempt tries another way
+    (keyboard / mouse), because a mouse click may land on the lit line when the game is behind other
+    windows. Success only when the run information at the top right is gone (town / loading).
+    -> True when the stage was left. On failure nothing is left open."""
     keys = keys or {}
+    has_keys = bool(keys.get("down") and keys.get("enter"))
 
     def norm_now():
         f_ = io.grab()
@@ -991,7 +1023,7 @@ def leave_via_menu(io, log, open_menu, keys=None, left=None):
             if n_ is not None:
                 if confirm_shown(n_):
                     return "confirm"
-                if esc_menu_open(n_):
+                if menu_open(n_):
                     st_, gone = "menu", 0
                 elif out_of_stage(f_):
                     gone += 1
@@ -1004,64 +1036,79 @@ def leave_via_menu(io, log, open_menu, keys=None, left=None):
                 return st_
             time.sleep(0.4)
 
-    def confirm_box(geo):
-        """The second box: its lower button. Click, then the keyboard."""
-        cx, cy = geo.raw(*CONFIRM_EXIT)
-        tries = [("click", None)]
-        if keys.get("down") and keys.get("enter"):
-            tries += [("keys", ["down", "enter"]), ("keys", ["enter"])]
-        for how, seq in tries:
-            if how == "click":
-                io.move(cx, cy)
-                time.sleep(0.3)
-                io.click(cx, cy)
-            else:
-                for k in seq:
-                    io.key(keys[k])
-                    time.sleep(0.2)
-            r = wait_left(3.5)
-            if r == "left":
-                log("저장 확인 창에서 '저장 후 나가기' (%s)" % ("클릭" if how == "click" else "키보드"))
-                return True
-            if r != "confirm":
-                return False                      # the box closed some other way: start again
-        return False
+    def press(seq):
+        for k in seq:
+            io.key(keys[k])
+            time.sleep(0.2)
+
+    def close_all():
+        """Leave nothing open: Esc while a box or the menu is still showing."""
+        for _ in range(3):
+            f_, n_ = norm_now()
+            if n_ is None or not (menu_open(n_) or confirm_shown(n_)):
+                return
+            open_menu()
+            time.sleep(0.6)
 
     open_menu()
     time.sleep(0.9)
     f, n = norm_now()
-    if n is None or not esc_menu_open(n):
+    if n is None:
+        return False
+    if confirm_shown(n):
+        pass                                      # the box is already up (left from a try before)
+    elif not menu_open(n):
+        log("Esc를 눌렀지만 메뉴가 보이지 않음")
+        close_all()
         return False
     geo = Geo(f)
     x, y = geo.raw(*MENU_EXIT)
-    ways = []
-    if keys.get("down") and keys.get("enter"):
-        ways.append("keys")
-    ways += ["click", "click"]
-    for way in ways:
-        if way == "keys":
-            for _ in range(4):                    # the last of the five lines (no wrap needed)
-                io.key(keys["down"])
-                time.sleep(0.15)
-            time.sleep(0.25)
-            f, n = norm_now()
-            if n is None or not exit_menu_shown(n):
-                continue                          # the highlight did not get there: use the mouse
-            io.key(keys["enter"])
+    use_keys = has_keys and attempt % 2 == 1      # 1, 3, 5: keyboard / 2, 4, 6: mouse
+    if not confirm_shown(n):
+        if use_keys:
+            row = lit_row(n)
+            if row is not None:
+                press(["down"] * (4 - row) + ["enter"])          # from the lit line down to the last one
+            else:
+                press(["down"] * 4 + ["enter"] if attempt < 3 else ["up", "enter"])   # down 4 / up 1 (wrap)
+            how = "키보드"
         else:
             io.move(x, y)
             time.sleep(0.35)
             io.click(x, y)
+            time.sleep(0.3)
+            io.click(x, y)                        # a first click may only move the highlight
+            how = "클릭"
         r = wait_left(3.5)
+        log("Esc 메뉴 '저장 후 나가기' (%s, %d번째) -> %s" % (how, attempt, {"left": "마을로 나감", "confirm": "확인 창",
+                                                                     "menu": "메뉴 그대로", "game": "게임으로 돌아감"}[r]))
         if r == "left":
             return True
-        if r == "confirm":
-            return confirm_box(geo)
-        if r == "game":
-            log("Esc 메뉴가 닫혔지만 마을로 가지 않음 (게임으로 돌아감): 다시 시도")
+        if r != "confirm":
+            close_all()
             return False
-    log("Esc 메뉴에서 '저장 후 나가기'가 눌리지 않음: 메뉴를 닫고 다시 시도")
-    open_menu()
+    # "게임을 저장하고 나갈까요?": its lower button
+    cx, cy = geo.raw(*CONFIRM_EXIT)
+    tries = [("click", None)]
+    if has_keys:
+        tries += [("keys", ["down", "enter"]), ("keys", ["tab", "enter"] if keys.get("tab") else ["enter"])]
+    for how, seq in tries:
+        if how == "click":
+            io.move(cx, cy)
+            time.sleep(0.3)
+            io.click(cx, cy)
+        else:
+            press(seq)
+        r = wait_left(3.5)
+        log("확인 창 '저장 후 나가기' (%s) -> %s" % ("클릭" if how == "click" else "+".join(seq),
+                                             {"left": "마을로 나감", "confirm": "창 그대로", "menu": "메뉴로 돌아감",
+                                              "game": "게임으로 돌아감"}[r]))
+        if r == "left":
+            return True
+        if r != "confirm":
+            close_all()
+            return False
+    close_all()
     return False
 
 
