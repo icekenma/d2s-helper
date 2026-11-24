@@ -24,6 +24,71 @@ UNIQ_LIST_CENTER = (235, 270)
 SCAN_TABS = sorter.STASH_ORDER
 
 
+# the skills picked in a run: icons at the top left (5 x 5), shown only while a run is on
+SKILL_CELLS = [(174 + 25 * c, 17 + 25 * r) for r in range(5) for c in range(5)]
+PENDING = {"dir": None}          # a scan waiting for the next run's skills (set after a scan in town)
+
+
+def scan_skills(io, log):
+    """During a run (called once after the boss dies): the info box of every skill icon, added to the last
+    scan's folder and ZIP."""
+    out = PENDING.get("dir")
+    PENDING["dir"] = None
+    if not out or not os.path.isdir(out):
+        return
+    f = io.grab()
+    if f is None:
+        return
+    geo = sorter.Geo(f)
+    prev_fg = None
+    if not io.front():
+        # info boxes only show with the game in front: for these few seconds only
+        try:
+            import ctypes
+            from . import win
+            prev_fg = ctypes.windll.user32.GetForegroundWindow()
+            if not win.focus(io.hwnd):
+                prev_fg = None
+            time.sleep(0.4)
+        except Exception:
+            prev_fg = None
+    io.move(*geo.raw(400, 300))
+    time.sleep(0.3)
+    base = io.grab()
+    if base is None:
+        return
+    _save(os.path.join(out, "000_화면_스킬.jpg"), base)
+    tips, got = [], 0
+    for i, (x, y) in enumerate(SKILL_CELLS):
+        tip = None
+        for k in range(3):
+            io.move(*geo.raw(x + (k % 2), y))
+            time.sleep(0.12 + 0.08 * k)
+            hov = io.grab()
+            if hov is not None:
+                tip = sorter.tooltip_crop(base, hov, geo)
+                if tip is not None:
+                    break
+        if tip is None or any(sorter.same_tip(tip, t) for t in tips):
+            continue
+        tips.append(tip)
+        got += 1
+        _save(os.path.join(out, "스킬_%02d.jpg" % (i + 1)), tip)
+    io.move(*geo.raw(400, 300))
+    if prev_fg:
+        try:
+            from . import win
+            win.focus(prev_fg)
+        except Exception:
+            pass
+    with zipfile.ZipFile(out + ".zip", "a", zipfile.ZIP_DEFLATED) as z:
+        have = set(z.namelist())
+        for fn in sorted(os.listdir(out)):
+            if fn not in have:
+                z.write(os.path.join(out, fn), fn)
+    log("장비 스캔: 이번 판 스킬 %d개 정보창을 스캔 결과에 추가함" % got)
+
+
 def _color_at(norm, x, y, cell):
     """Same test as the bags' cells, for a cell whose top-left corner is x, y."""
     ox, oy = sorter.INV_X, sorter.INV_Y
@@ -252,5 +317,7 @@ def scan(io, base_dir, log, stop=None):
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         for fn in sorted(os.listdir(out)):
             z.write(os.path.join(out, fn), fn)
-    log("장비 스캔 끝: 아이템 %d개 -> %s (이 ZIP을 보내 주세요)" % (count[0], zpath))
+    PENDING["dir"] = out
+    log("장비 스캔 끝: 아이템 %d개 -> %s" % (count[0], zpath))
+    log("장비 스캔: 다음 판 보스 처치 직후 스킬 정보창도 찍어서 이 ZIP에 더함 (그 뒤 보내 주세요)")
     return zpath

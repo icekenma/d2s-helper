@@ -1100,6 +1100,15 @@ class Picker:
         if self.busy:
             self._stalled(now, "게임 위에 창이 열려 있음 (대장장이·인벤토리·웨이포인트 창이 아닌데 이 문구가 계속 나오면 알려 주세요)")
             return
+        if self.over_since is not None and now - self.over_since > 1.0:
+            from . import gearscan
+            if gearscan.PENDING.get("dir"):
+                self.release()
+                try:
+                    gearscan.scan_skills(self.io, self.log)
+                except Exception as e:
+                    self.log("스킬 스캔 오류: %s" % e)
+                return
         if self._route(now):
             return
         h, w = frame.shape[:2]
