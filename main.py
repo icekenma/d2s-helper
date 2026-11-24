@@ -100,7 +100,8 @@ class App(tk.Tk):
         self._remote()
         self.hot = keyboard.GlobalHotKeys({"<f7>": lambda: self.q.put(("rec", None)),
                                            "<f8>": lambda: self.q.put(("toggle", None)),
-                                           "<f9>": lambda: self.q.put(("halt", None))})
+                                           "<f9>": lambda: self.q.put(("halt", None)),
+                                           "<f10>": lambda: self.q.put(("scan", None))})
         self.hot.daemon = True
         self.hot.start()
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -138,7 +139,7 @@ class App(tk.Tk):
         self.l_state.pack(anchor="w")
         self.b_run = ttk.Button(top, text="시작 (F8)", style="Gold.TButton", command=self.toggle)
         self.b_run.pack(side="right")
-        tk.Label(top, text="F9 즉시 중지 · 게임 창은 뒤에 있어도 됨", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
+        tk.Label(top, text="F9 즉시 중지 · F10 장비 스캔 · 게임 창은 뒤에 있어도 됨", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
 
         sf = tk.Frame(self, bg=BG)
         sf.pack(fill="x", padx=20, pady=(0, 10))
@@ -179,7 +180,7 @@ class App(tk.Tk):
         self.l_upd.pack(side="left")
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
-        ttk.Button(rb, text="장비 스캔", command=self._gear_scan).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
 
         ph = tk.Frame(self, bg=BG)

@@ -190,7 +190,7 @@ summary::-webkit-details-marker{display:none}
    </div>
   </div>
   <div class="scan">
-   <button type="button" id="scanBtn">장비 스캔</button>
+   <button type="button" id="scanBtn">장비 스캔 (F10)</button>
    <a id="scanZip" href="/scan/latest.zip">최근 스캔 받기</a>
   </div>
   <p class="hint" id="scanHint">마을에서 대장장이 창이나 보관함을 연 뒤 누르세요. 아이템마다 마우스만 올려 정보창을 찍습니다.</p>
@@ -217,7 +217,7 @@ function status(){
 $("scanBtn").onclick=function(){
  if(running&&!confirm("자동 진행 중입니다. 장비 스캔은 진행이 손을 놓을 때까지 기다립니다. 계속할까요?"))return;
  var b=$("scanBtn");b.disabled=true;b.textContent="스캔 중… (기록 보기에서 진행 확인)";
- post("/api/scan");setTimeout(function(){b.disabled=false;b.textContent="장비 스캔"},60000);
+ post("/api/scan");setTimeout(function(){b.disabled=false;b.textContent="장비 스캔 (F10)"},60000);
 };
 $("go").onclick=function(){post("/api/toggle").then(function(){setTimeout(status,400)})};
 

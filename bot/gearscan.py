@@ -107,6 +107,49 @@ def scan_skills(io, log):
     log("장비 스캔: 이번 판 스킬 %d개 정보창을 스캔 결과에 추가함" % got)
 
 
+def _list_gray(norm):
+    x0, y0, x1, y1 = UNIQ_LIST
+    return cv2.cvtColor(norm[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+
+def _thumb(norm):
+    """(top, bottom) of the card list's scroll bar thumb, or None."""
+    col = cv2.cvtColor(norm[142:408, 378:384], cv2.COLOR_BGR2GRAY).astype(np.float32).mean(1)
+    on = np.nonzero(col > 60)[0]
+    if len(on) < 4:
+        return None
+    return 142 + int(on[0]), 142 + int(on[-1]) + 1
+
+
+def _shift(prev, cur):
+    """How far the list went up between two pictures of it: where the bottom strip of the earlier one
+    is in the later one. None when it is gone (moved a whole page or more)."""
+    h = prev.shape[0]
+    strip = prev[h - 50:h]
+    if strip.std() < 3:
+        strip = prev[h - 100:h - 50]
+        base_y = h - 100
+    else:
+        base_y = h - 50
+    r = cv2.matchTemplate(cur, strip, cv2.TM_CCOEFF_NORMED)
+    _, v, _, loc = cv2.minMaxLoc(r)
+    if not np.isfinite(v) or v < 0.8:
+        return None
+    d = int(base_y - loc[1])
+    if d < 0 or d >= h - 10:
+        return None
+    # check the whole overlap, not just the strip (cards look alike: a strip can match the wrong row)
+    if d > 0 and float(np.abs(prev[d:] - cur[:h - d]).mean()) > 6.0:
+        return None
+    return float(d)
+
+
+def _blank(norm, x, y):
+    """An empty spot of the card list (below the last card): dark and flat."""
+    p = norm[int(y) - 12:int(y) + 12, int(x) - 30:int(x) + 30].astype(np.float32)
+    return p.size == 0 or (p.mean() < 22 and p.std() < 9)
+
+
 def _color_at(norm, x, y, cell):
     """Same test as the bags' cells, for a cell whose top-left corner is x, y."""
     ox, oy = sorter.INV_X, sorter.INV_Y
@@ -240,39 +283,76 @@ def scan(io, base_dir, log, stop=None):
                 io.scroll(*geo.raw(lx, ly), 15)
                 time.sleep(0.12)
             time.sleep(0.3)
-            got, page, prev = 0, 0, None
-            while page < 60 and not halted():
-                b = park()
+            got, page, new_from = 0, 0, UNIQ_LIST[1]
+            H = UNIQ_LIST[3] - UNIQ_LIST[1]
+            b = park()
+            while page < 120 and not halted():
                 nb = geo.normalize(b)
-                lst = nb[UNIQ_LIST[1]:UNIQ_LIST[3], UNIQ_LIST[0]:UNIQ_LIST[2]]
                 # the list itself too (names and which are collected), page by page
                 _save(os.path.join(out, "고유_%02d_목록_%02d.jpg" % (ci + 1, page + 1)), nb[40:420, 88:392])
-                for yy in range(UNIQ_LIST[1] + 22, UNIQ_LIST[3] - 10, 50):
+                # rest the cursor on the cards that came into view (with a little overlap)
+                y_start = max(UNIQ_LIST[1] + 12, new_from - 30)
+                for yy in range(int(y_start), UNIQ_LIST[3] - 8, 45):
                     for xx in UNIQ_COLS:
                         if halted():
                             return
+                        if _blank(nb, xx, yy):
+                            continue                     # nothing there (below the last card)
                         tip = hover((xx, yy), b, tries=3)
                         if tip is not None and keep(tip, "고유_%02d" % (ci + 1)):
                             got += 1
-                # next page: wheel down until the list has moved about a page
-                moved = 0.0
-                for _ in range(6):
-                    io.scroll(*geo.raw(lx, ly), -2)
-                    time.sleep(0.35)
+                # next: one wheel notch at a time, measured each time, until about half a page has come in
+                moved, end = 0.0, False
+                prev = _list_gray(nb)
+                t_prev = _thumb(nb)
+                while moved < 0.5 * H:
+                    io.scroll(*geo.raw(lx, ly), -1)
+                    time.sleep(0.25)
                     io.move(*geo.raw(*sorter.PARK))
-                    time.sleep(0.15)
-                    nb2 = geo.normalize(io.grab())
-                    lst2 = nb2[UNIQ_LIST[1]:UNIQ_LIST[3], UNIQ_LIST[0]:UNIQ_LIST[2]]
-                    if float(np.abs(lst2.astype(int) - lst.astype(int)).mean()) < 2.0:
-                        break                        # nothing moved: the end of the list
-                    (_, sy), _ = cv2.phaseCorrelate(cv2.cvtColor(lst, cv2.COLOR_BGR2GRAY).astype(np.float32),
-                                                    cv2.cvtColor(lst2, cv2.COLOR_BGR2GRAY).astype(np.float32))
-                    moved = abs(sy)
-                    if moved > 0.55 * (UNIQ_LIST[3] - UNIQ_LIST[1]) or moved < 1:
+                    time.sleep(0.12)
+                    b = io.grab()
+                    if b is None:
+                        end = True
                         break
-                if float(np.abs(lst2.astype(int) - lst.astype(int)).mean()) < 2.0:
+                    cur = _list_gray(geo.normalize(b))
+                    if float(np.abs(cur - prev).mean()) < 1.5:
+                        end = True                       # the wheel moved nothing: the end of the list
+                        break
+                    ncur = geo.normalize(b)
+                    img = _shift(prev, cur)
+                    est = None
+                    if t_prev is not None:
+                        t_cur = _thumb(ncur)
+                        if t_cur is not None:
+                            # the scroll bar's thumb: rough but never fooled by cards that look alike
+                            est = (t_cur[0] - t_prev[0]) * H / max(4.0, float(t_prev[1] - t_prev[0]))
+                        t_prev = t_cur
+                    if img is not None and (est is None or abs(img - est) < max(25.0, 0.25 * H)):
+                        step = img
+                    elif est is not None and est > 0:
+                        step = est
+                    else:
+                        step = H                         # not measurable: count a whole page
+                    moved += step
+                    prev = cur
+                if moved > 0:
+                    new_from = UNIQ_LIST[3] - min(moved, H)
+                    page += 1
+                if end:
+                    if moved > 0:                        # the last bit that came in before the end
+                        nb = geo.normalize(b) if b is not None else nb
+                        y_start = max(UNIQ_LIST[1] + 12, new_from - 30)
+                        _save(os.path.join(out, "고유_%02d_목록_%02d.jpg" % (ci + 1, page + 1)), nb[40:420, 88:392])
+                        for yy in range(int(y_start), UNIQ_LIST[3] - 8, 45):
+                            for xx in UNIQ_COLS:
+                                if halted():
+                                    return
+                                if _blank(nb, xx, yy):
+                                    continue
+                                tip = hover((xx, yy), b, tries=3)
+                                if tip is not None and keep(tip, "고유_%02d" % (ci + 1)):
+                                    got += 1
                     break
-                page += 1
             total += got
             log("장비 스캔: 고유 %d/%d번째 종류 %d개" % (ci + 1, len(UNIQ_CATS), got))
         log("장비 스캔: 고유 탭 %d개" % total)
