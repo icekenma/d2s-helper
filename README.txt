@@ -1,4 +1,4 @@
-D2S Helper v2.43 - D2 Survivors 자동 진행 도우미 (설정은 공포 영역 단계 하나, 나머지는 정해진 규칙)
+D2S Helper v2.44 - D2 Survivors 자동 진행 도우미 (설정은 공포 영역 단계 하나, 나머지는 정해진 규칙)
 
 [설치] Python 3.9 이상 설치 후 install.bat 한 번 실행
 [실행] run.bat -> "시작 (F8)". 즉시 중지는 F9.

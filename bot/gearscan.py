@@ -114,11 +114,19 @@ def _list_gray(norm):
 
 def _thumb(norm):
     """(top, bottom) of the card list's scroll bar thumb, or None."""
-    col = cv2.cvtColor(norm[142:408, 378:384], cv2.COLOR_BGR2GRAY).astype(np.float32).mean(1)
-    on = np.nonzero(col > 60)[0]
-    if len(on) < 4:
+    col = cv2.cvtColor(norm[143:402, 378:384], cv2.COLOR_BGR2GRAY).astype(np.float32).mean(1)
+    on = col > 60
+    best, start = None, None
+    for i, v in enumerate(list(on) + [False]):        # the longest bright run (not the arrows)
+        if v and start is None:
+            start = i
+        elif not v and start is not None:
+            if best is None or i - start > best[1] - best[0]:
+                best = (start, i)
+            start = None
+    if best is None or best[1] - best[0] < 4:
         return None
-    return 142 + int(on[0]), 142 + int(on[-1]) + 1
+    return 143 + best[0], 143 + best[1]
 
 
 def _shift(prev, cur):
