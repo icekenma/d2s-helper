@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+config.json
+progress.json
+collection.json
+route.json
+records/
+snaps/
+collected/
+_update_tmp/

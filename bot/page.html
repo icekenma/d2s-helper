@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#14110f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>D2S 리모컨</title>
+<style>
+:root{
+ --stone:#14110f;--slab:#211b17;--slab2:#2b231d;--seam:#3d3229;
+ --parch:#e9dfc8;--ash:#968873;--gold:#c9a24a;--gold2:#e2bf68;--blood:#a8342a;--mana:#3d63b0;
+ --r:10px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--stone);color:var(--parch);
+ font:15px/1.45 "Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+ padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+ -webkit-user-select:none;user-select:none;overscroll-behavior:none}
+.app{max-width:760px;margin:0 auto;padding:10px 12px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.app>*,.items>*{min-width:0}
+
+/* top: run count, state, start/stop */
+.top{display:flex;align-items:center;gap:12px}
+.runs{font-size:34px;font-weight:800;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums;min-width:1.6em}
+.st{flex:1;min-width:0}
+.st b{display:block;font-size:14px;font-weight:600}
+.st span{display:block;font-size:12px;color:var(--ash);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st.on b{color:#8fbf63}
+.go{border:0;border-radius:var(--r);padding:12px 18px;font:inherit;font-weight:700;background:var(--gold);color:#1a140e;min-width:92px}
+.go.on{background:var(--blood);color:var(--parch)}
+
+/* the game screen: the controller's centre */
+.screen{position:relative;border-radius:var(--r);overflow:hidden;background:#000;border:1px solid var(--seam);touch-action:none}
+.screen img{display:block;width:100%;height:auto;pointer-events:none}
+.screen.empty{aspect-ratio:4/3}                 /* keeps its place (and the message) until a picture arrives */
+.screen.empty img{position:absolute;opacity:0}
+.screen .wait{position:absolute;inset:0;display:grid;place-items:center;color:var(--ash);font-size:13px;text-align:center;padding:20px}
+.dot{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:2px solid var(--gold2);
+ pointer-events:none;animation:ping .45s ease-out forwards}
+.dot.run{border-color:#7f9be0;animation:none;opacity:.9}
+@keyframes ping{from{transform:scale(.35);opacity:1}to{transform:scale(1.25);opacity:0}}
+.hint{font-size:12px;color:var(--ash);margin:0 2px}
+.left,.right{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}
+
+/* modifier for the next tap */
+.mods{display:grid;grid-template-columns:repeat(3,1fr);background:var(--slab);border:1px solid var(--seam);border-radius:var(--r);padding:3px}
+.mods button{border:0;background:none;color:var(--ash);font:inherit;font-size:14px;padding:9px 0;border-radius:7px}
+.mods button[aria-pressed=true]{background:var(--slab2);color:var(--parch);box-shadow:inset 0 0 0 1px var(--gold)}
+
+/* deck: arrow pad + keys */
+.deck{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center}
+.pad{display:grid;grid-template-columns:repeat(3,62px);grid-template-rows:repeat(3,62px);gap:5px}
+.pad button,.keys button{border:1px solid var(--seam);background:linear-gradient(#2e261f,#1d1814);color:var(--parch);
+ font:inherit;border-radius:9px;touch-action:none}
+.pad button{font-size:22px;color:var(--gold)}
+.pad .u{grid-area:1/2}.pad .l{grid-area:2/1}.pad .r{grid-area:2/3}.pad .d{grid-area:3/2}
+.pad .hub{grid-area:2/2;border:0;background:radial-gradient(circle,#3a2f25 0,#1a1511 70%);border-radius:50%}
+.pad button.held,.keys button.held{background:var(--gold);color:#1a140e;border-color:var(--gold2)}
+.keys{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.keys button{padding:13px 6px;font-size:14px;line-height:1.2}
+.keys button small{display:block;font-size:11px;color:var(--ash);margin-top:2px}
+.keys button.held small{color:#3b2c17}
+
+details{background:var(--slab);border:1px solid var(--seam);border-radius:var(--r)}
+summary{padding:12px 14px;font-size:14px;color:var(--ash);list-style:none}
+summary::-webkit-details-marker{display:none}
+#log{margin:0;padding:0 14px 14px;font-size:12px;white-space:pre-wrap;max-height:300px;overflow:auto;color:var(--ash);
+ -webkit-user-select:text;user-select:text}
+button:focus-visible{outline:2px solid var(--parch);outline-offset:2px}
+
+
+/* views */
+.views{display:grid;grid-template-columns:1fr 1fr;background:var(--slab);border:1px solid var(--seam);border-radius:var(--r);padding:3px}
+.views button{border:0;background:none;color:var(--ash);font:inherit;font-weight:600;padding:10px 0;border-radius:7px}
+.views button[aria-selected=true]{background:var(--slab2);color:var(--gold)}
+[hidden]{display:none!important}
+.items{max-width:760px;margin:0 auto;padding:0 12px 30px;display:grid;gap:12px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border:1px solid var(--seam);background:var(--slab);color:var(--ash);font:inherit;font-size:13px;
+ padding:7px 12px;border-radius:999px}
+.chips button b{color:var(--parch);font-weight:700;margin-left:4px;font-variant-numeric:tabular-nums}
+.chips button[aria-pressed=true]{border-color:var(--gold);color:var(--parch)}
+.hour{margin:8px 2px 2px;font-size:13px;color:var(--ash);display:flex;justify-content:space-between;
+ border-bottom:1px solid var(--seam);padding-bottom:6px}
+.hour b{color:var(--parch);font-weight:600}
+.it{display:grid;grid-template-columns:76px 1fr auto;gap:12px;align-items:center;padding:8px 2px;border:0;background:none;
+ color:inherit;font:inherit;text-align:left;width:100%}
+.it .th{width:76px;height:52px;border-radius:6px;background:#000 center top/cover no-repeat;border:1px solid var(--seam)}
+.it .nm{font-weight:600;font-size:15px;line-height:1.3}
+.it .sb{font-size:12px;color:var(--ash)}
+.it time{font-size:12px;color:var(--ash);font-variant-numeric:tabular-nums}
+.q-gold{color:#c7a46a}.q-green{color:#4fc24f}.q-yellow{color:#e8dc6a}.q-orange{color:#e39a3a}.q-blue{color:#7f95e8}
+.clear{justify-self:center;margin-top:6px;border:1px solid #5a2a24;background:none;color:#d98b7f;font:inherit;font-size:14px;
+ padding:10px 18px;border-radius:var(--r)}
+.empty{color:var(--ash);padding:28px 8px;text-align:center;border:1px dashed var(--seam);border-radius:var(--r)}
+.more{border:1px solid var(--seam);background:var(--slab);color:var(--parch);font:inherit;padding:12px;border-radius:var(--r)}
+.zoom{position:fixed;inset:0;background:rgba(10,8,6,.92);display:grid;place-items:center;padding:20px;z-index:9}
+.zoom img{max-width:100%;max-height:80vh;border:1px solid var(--seam);border-radius:6px}
+.zoom p{margin:12px 0 0;text-align:center;color:var(--ash);font-size:13px}
+
+@media (orientation:landscape) and (min-width:700px){
+ .app{max-width:none;grid-template-columns:1fr 300px;align-items:start}
+ .top,.screen,.hint,.mods-wrap,.deck,details{grid-column:auto}
+ .left{display:grid;gap:10px}
+ .right{display:grid;gap:12px}
+ .deck{grid-template-columns:1fr}
+ .pad{justify-content:center}
+ .screen{display:flex;justify-content:center}
+ .screen img{width:auto;max-width:100%;max-height:calc(100vh - 90px)}
+ .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){.dot{animation-duration:.01s}}
+</style></head><body>
+<div class="items" style="padding-top:10px;padding-bottom:0"><div class="views" role="tablist">
+ <button type="button" role="tab" id="v-ctl" aria-selected="true">조작</button>
+ <button type="button" role="tab" id="v-items" aria-selected="false">모은 아이템</button>
+</div></div>
+<section class="items" id="itemsView" hidden>
+ <div class="chips" id="chips"></div>
+ <div id="list"></div>
+ <button class="clear" type="button" id="clearItems">목록 비우기</button>
+</section>
+<div class="app" id="ctlView">
+ <div class="left">
+  <div class="top">
+   <div class="runs" id="runs">0</div>
+   <div class="st" id="st"><b id="stb">연결 중</b><span id="sts">판 진행 수</span></div>
+   <button class="go" id="go" type="button">시작</button>
+  </div>
+  <div class="screen empty" id="screen" aria-label="게임 화면. 누르면 그 자리 클릭, 길게 누르면 그쪽으로 계속 달림">
+   <img id="live" alt="">
+   <div class="wait" id="wait">게임 화면을 불러오는 중</div>
+  </div>
+  <p class="hint">실시간 화면입니다. 짧게 누르면 그 자리를 클릭, 길게 누른 채 끌면 손가락 쪽으로 달립니다.</p>
+ </div>
+ <div class="right">
+  <div class="mods" role="group" aria-label="다음 한 번 누를 때">
+   <button type="button" data-m="" aria-pressed="true">그냥 누르기</button>
+   <button type="button" data-m="ctrl" aria-pressed="false">Ctrl+누르기</button>
+   <button type="button" data-m="shift" aria-pressed="false">Shift+누르기</button>
+  </div>
+  <div class="deck">
+   <div class="pad" aria-label="방향키 (누르고 있는 동안 이동)">
+    <button class="u" type="button" data-k="up" aria-label="위">▲</button>
+    <button class="l" type="button" data-k="left" aria-label="왼쪽">◀</button>
+    <div class="hub"></div>
+    <button class="r" type="button" data-k="right" aria-label="오른쪽">▶</button>
+    <button class="d" type="button" data-k="down" aria-label="아래">▼</button>
+   </div>
+   <div class="keys">
+    <button type="button" data-t="esc">Esc<small>창 닫기 · 메뉴</small></button>
+    <button type="button" data-t="enter">Enter<small>다시 하기</small></button>
+    <button type="button" data-t="c">인벤토리<small>C</small></button>
+    <button type="button" data-t="tab">미니맵<small>Tab</small></button>
+   </div>
+  </div>
+  <details><summary>기록 보기</summary><pre id="log"></pre></details>
+ </div>
+</div>
+<script>
+var $=function(i){return document.getElementById(i)};
+var running=false,mod="",lastTouch=0,busyImg=false;
+function post(path,body){return fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})}).catch(function(){})}
+function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(function(n){return String(n).padStart(2,"0")}).join(":")}
+
+/* status */
+function status(){
+ fetch("/api/status").then(function(r){return r.json()}).then(function(s){
+  running=s.running;$("runs").textContent=s.runs;
+  $("st").className="st"+(running?" on":"");
+  $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
+  var last=(s.log||[]).slice(-1)[0]||"";$("sts").textContent=last.replace(/^\S+\s+/,"")||"판 진행 수";
+  $("go").textContent=running?"중지":"시작";$("go").className="go"+(running?" on":"");
+  $("log").textContent=(s.log||[]).slice().reverse().join("\n");
+ }).catch(function(){$("stb").textContent="PC와 연결이 끊김";$("sts").textContent="도우미가 켜져 있는지 확인하세요"});
+}
+$("go").onclick=function(){post("/api/toggle").then(function(){setTimeout(status,400)})};
+
+/* live picture: a continuous stream; still pictures every half second if the stream does not work */
+var streamOn=false,streamFail=0,stillT=null;
+function got(){$("wait").style.display="none";$("screen").classList.remove("empty")}
+function noPic(msg){$("screen").classList.add("empty");$("wait").style.display="grid";$("wait").textContent=msg}
+var streamCheck=null;
+function startStream(){
+ if(document.hidden)return;
+ var img=$("live");streamOn=true;
+ img.onload=function(){got();streamFail=0};
+ clearTimeout(streamCheck);
+ streamCheck=setTimeout(function(){             // no picture from the stream: half-second pictures instead
+  if(streamOn&&!$("live").naturalWidth){stopStream();startStill()}},4000);
+ img.onerror=function(){streamOn=false;streamFail++;if(streamFail<3){setTimeout(startStream,1500)}else{startStill()}};
+ img.src="/stream.mjpg?t="+Date.now();
+ setTimeout(function(){if(streamOn&&$("live").naturalWidth)got()},1500);
+}
+function stopStream(){streamOn=false;$("live").removeAttribute("src")}
+function live(){
+ if(document.hidden||busyImg||streamOn){return}
+ busyImg=true;var im=new Image();
+ im.onload=function(){$("live").src=im.src;got();busyImg=false};
+ im.onerror=function(){noPic("게임 화면을 읽지 못함 - 게임 창이 꺼졌거나 최소화됨. 다시 시도하는 중");busyImg=false};
+ im.src="/live.jpg?t="+Date.now();
+}
+var stillSince=0;
+function startStill(){if(stillT)return;stillSince=Date.now();(function loop(){
+ if(Date.now()-stillSince>30000&&$("live").naturalWidth){stillT=null;streamFail=0;startStream();return}   // try the stream again
+ live();stillT=setTimeout(loop,500)})()}
+startStream();
+setInterval(function(){if(streamOn&&!document.hidden){stopStream();startStream()}},540000);
+setInterval(status,2000);status();
+
+/* tap / hold on the screen */
+var scr=$("screen"),press=null,holdT=null,runDot=null,moveAt=0,keepT=null;
+function rel(e){var r=$("live").getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height)),px:e.clientX-scr.getBoundingClientRect().left,py:e.clientY-scr.getBoundingClientRect().top}}
+function dot(p,run){var d=document.createElement("div");d.className="dot"+(run?" run":"");d.style.left=p.px+"px";d.style.top=p.py+"px";scr.appendChild(d);if(!run)setTimeout(function(){d.remove()},500);return d}
+scr.addEventListener("pointerdown",function(e){
+ e.preventDefault();lastTouch=Date.now();scr.setPointerCapture(e.pointerId);
+ press=rel(e);
+ holdT=setTimeout(function(){                       /* held: run toward the finger */
+  holdT=null;runDot=dot(press,true);post("/api/drag",{act:"start",x:press.x,y:press.y});
+  keepT=setInterval(function(){post("/api/drag",{act:"move",x:press.x,y:press.y})},500);
+ },300);
+});
+scr.addEventListener("pointermove",function(e){
+ if(!press)return;var p=rel(e);press=p;lastTouch=Date.now();
+ if(runDot){runDot.style.left=p.px+"px";runDot.style.top=p.py+"px";
+  if(Date.now()-moveAt>90){moveAt=Date.now();post("/api/drag",{act:"move",x:p.x,y:p.y})}}
+});
+function endPress(){
+ if(!press)return;
+ if(holdT){clearTimeout(holdT);holdT=null;dot(press,false);
+  post("/api/tap",{x:press.x,y:press.y,mod:mod});if(mod)setMod("");
+ }else if(runDot){post("/api/drag",{act:"end"});runDot.remove();runDot=null}
+ clearInterval(keepT);keepT=null;press=null;setTimeout(live,150);
+}
+scr.addEventListener("pointerup",endPress);scr.addEventListener("pointercancel",endPress);
+
+/* modifier for the next tap only */
+function setMod(m){mod=m;Array.prototype.forEach.call(document.querySelectorAll(".mods button"),function(b){b.setAttribute("aria-pressed",String(b.dataset.m===m))})}
+Array.prototype.forEach.call(document.querySelectorAll(".mods button"),function(b){b.onclick=function(){setMod(b.dataset.m)}});
+
+/* arrows: held while the finger is on them */
+Array.prototype.forEach.call(document.querySelectorAll(".pad button"),function(b){
+ var t=null;
+ function down(e){e.preventDefault();lastTouch=Date.now();b.setPointerCapture(e.pointerId);b.classList.add("held");
+  post("/api/key",{k:b.dataset.k,act:"down"});t=setInterval(function(){post("/api/key",{k:b.dataset.k,act:"down"})},400)}
+ function up(){if(!t)return;clearInterval(t);t=null;b.classList.remove("held");post("/api/key",{k:b.dataset.k,act:"up"});setTimeout(live,150)}
+ b.addEventListener("pointerdown",down);b.addEventListener("pointerup",up);b.addEventListener("pointercancel",up);
+});
+/* single keys */
+Array.prototype.forEach.call(document.querySelectorAll(".keys button"),function(b){
+ b.onclick=function(){lastTouch=Date.now();b.classList.add("held");setTimeout(function(){b.classList.remove("held")},160);
+  post("/api/key",{k:b.dataset.t,act:"tap"}).then(function(){setTimeout(live,200)})};
+});
+
+/* ---- collected items: everything registered or stashed (sold items are not kept) ---- */
+var items=[],cat="all",shown=200;
+var CATS=[["all","전체"],["ess","정수"],["reg","유니크·세트 등록"],["charm","부적"],["rune","룬·열쇠"],["etc","기타"]];
+function catOf(x){
+ if(x.action&&x.action.indexOf("등록")>=0)return "reg";
+ var k=(x.kind||"")+" "+(x.name||"")+" "+(x.raw||"");
+ if(k.indexOf("정수")>=0)return "ess";
+ if(k.indexOf("부적")>=0)return "charm";
+ if(k.indexOf("룬")>=0||k.indexOf("열쇠")>=0)return "rune";
+ return "etc";
+}
+function nameOf(x){return x.name||x.raw||x.kind||x.quality||"읽지 못한 아이템"}
+function hourKey(t){var d=new Date(t*1000);return d.getFullYear()+"-"+d.getMonth()+"-"+d.getDate()+"-"+d.getHours()}
+function hourTitle(t){var d=new Date(t*1000),n=new Date(),y=new Date(n.getTime()-864e5);
+ var day=d.toDateString()===n.toDateString()?"오늘":d.toDateString()===y.toDateString()?"어제":(d.getMonth()+1)+"월 "+d.getDate()+"일";
+ return day+" "+d.getHours()+"시"}
+function hhmm(t){var d=new Date(t*1000);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}
+function sub(x){
+ if(x.action==="보관")return "보관함 "+(x.tab||"")+" 탭"+(x.kind&&x.kind!==nameOf(x)?" · "+x.kind:"");
+ return x.action+(x.score!=null?" · "+x.score+"점":"");
+}
+function loadItems(){
+ fetch("/api/items").then(function(r){return r.json()}).then(function(d){items=d.items||[];drawItems()}).catch(function(){});
+}
+function drawItems(){
+ $("clearItems").hidden=!items.length;
+ var cnt={};CATS.forEach(function(c){cnt[c[0]]=0});
+ items.forEach(function(x){cnt.all++;cnt[catOf(x)]++});
+ $("chips").innerHTML=CATS.map(function(c){return '<button type="button" data-c="'+c[0]+'" aria-pressed="'+(cat===c[0])+'">'+c[1]+"<b>"+cnt[c[0]]+"</b></button>"}).join("");
+ Array.prototype.forEach.call($("chips").children,function(b){b.onclick=function(){cat=b.dataset.c;shown=200;drawItems()}});
+ var list=items.filter(function(x){return cat==="all"||catOf(x)===cat});
+ if(!list.length){$("list").innerHTML='<div class="empty">'+(items.length?"이 종류로 모은 아이템이 없습니다.":"아직 모은 아이템이 없습니다. 대장장이에서 보관하거나 등록한 아이템이 여기에 시간순으로 쌓입니다.")+"</div>";return}
+ var html="",key="",grp=[];
+ function flush(){if(!grp.length)return;html+='<div class="hour"><b>'+hourTitle(grp[0].t)+"</b><span>"+grp.length+"개</span></div>"+grp.map(row).join("");grp=[]}
+ list.slice(0,shown).forEach(function(x){var k=hourKey(x.t);if(k!==key){flush();key=k}grp.push(x)});flush();
+ if(list.length>shown)html+='<button class="more" type="button" id="more">더 보기 ('+(list.length-shown)+"개 남음)</button>";
+ $("list").innerHTML=html;
+ if($("more"))$("more").onclick=function(){shown+=200;drawItems()};
+ Array.prototype.forEach.call(document.querySelectorAll(".it"),function(b){b.onclick=function(){zoom(b.dataset.img,b.dataset.cap)}});
+}
+function row(x){
+ var th=x.img?' style="background-image:url(/items/'+x.img+')"':"";
+ return '<button class="it" type="button" data-img="'+(x.img||"")+'" data-cap="'+esc(nameOf(x)+" · "+sub(x)+" · "+hhmm(x.t))+'"><span class="th"'+th+'></span><span><span class="nm q-'+(x.color||"")+'">'+esc(nameOf(x))+'</span><br><span class="sb">'+esc(sub(x))+"</span></span><time>"+hhmm(x.t)+"</time></button>";
+}
+function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML}
+function zoom(img,cap){if(!img)return;var z=document.createElement("div");z.className="zoom";
+ z.innerHTML='<div><img src="/items/'+img+'" alt=""><p>'+cap+"</p></div>";z.onclick=function(){z.remove()};document.body.appendChild(z)}
+function show(v){
+ var it=v==="items";$("itemsView").hidden=!it;$("ctlView").hidden=it;
+ $("v-items").setAttribute("aria-selected",String(it));$("v-ctl").setAttribute("aria-selected",String(!it));
+ if(it){stopStream();loadItems()}else if(!stillT){startStream()}
+ history.replaceState(null,"",it?"#items":"#");
+}
+$("clearItems").onclick=function(){
+ if(!items.length)return;
+ if(!confirm("모은 아이템 목록 "+items.length+"개를 비울까요?\n(기록은 PC의 collected 폴더 안 old_ 폴더로 옮겨 둡니다)"))return;
+ fetch("/api/items/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){items=[];cat="all";drawItems()}).catch(function(){});
+};
+$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};
+setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);
+if(location.hash==="#items")show("items");
+
+document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!stillT&&$("itemsView").hidden)startStream()}});
+</script></body></html>
