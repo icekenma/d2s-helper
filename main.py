@@ -179,6 +179,7 @@ class App(tk.Tk):
         self.l_upd.pack(side="left")
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="장비 스캔", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
 
         ph = tk.Frame(self, bg=BG)
@@ -275,6 +276,36 @@ class App(tk.Tk):
         self.keys.clear()
         self._say("방향키 녹음을 지움")
         self._rec_label()
+
+    def _gear_scan(self):
+        """Info boxes of all worn / bag / stash items into one ZIP (the smith's window must be open)."""
+        if getattr(self, "scanning", False):
+            return
+        self.scanning = True
+        self._say("장비 스캔 시작: 끝날 때까지 마우스를 움직이지 마세요 (게임 창이 앞에 있을 때)")
+
+        def work():
+            from bot.gameio import GameIO
+            from bot import gearscan
+            if not self.io_lock.acquire(timeout=20):
+                self.q.put(("log", "장비 스캔: 자동 진행이 손을 놓지 않음. 중지(F8) 후 다시 누르세요"))
+                self.scanning = False
+                return
+            io = GameIO(TITLE)
+            try:
+                z = gearscan.scan(io, BASE, lambda m: self.q.put(("log", m)))
+                if z:
+                    try:
+                        os.startfile(os.path.dirname(z))
+                    except Exception:
+                        pass
+            except Exception as e:
+                self.q.put(("log", "장비 스캔 오류: %s" % e))
+            finally:
+                io.close()
+                self.io_lock.release()
+                self.scanning = False
+        threading.Thread(target=work, daemon=True).start()
 
     def _open_items(self):
         """The same page as on the phone, opened on this PC at the collected-items list."""

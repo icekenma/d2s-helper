@@ -15,7 +15,7 @@ BRANCH = "main"
 RAW = "https://raw.githubusercontent.com/%s/%s/VERSION" % (REPO, BRANCH)
 ZIP = "https://codeload.github.com/%s/zip/refs/heads/%s" % (REPO, BRANCH)
 KEEP = {"config.json", "progress.json", "collection.json", "route.json"}       # never overwritten
-SKIP_DIRS = {"records", "snaps", "collected", "__pycache__", ".git"}
+SKIP_DIRS = {"records", "snaps", "collected", "gear_scan", "__pycache__", ".git"}
 
 
 def _ver(text):
