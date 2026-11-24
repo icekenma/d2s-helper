@@ -332,7 +332,8 @@ class App(tk.Tk):
             save_cfg(self.cfg)
         try:
             self.remote = Remote(BASE, int(self.cfg.get("remote_port", 8765)), self.cfg["remote_pin"],
-                                 lambda: self.shared, lambda: self.q.put(("toggle", None)), lambda: None,
+                                 lambda: self.shared, lambda: self.q.put(("toggle", None)),
+                                 lambda: self.q.put(("scan", None)),
                                  io_lock=self.io_lock, title=TITLE)
             self.remote.start()
             self._show_url()
@@ -444,6 +445,8 @@ class App(tk.Tk):
                     if p.startswith("포탈 클릭") or p.startswith("마을로 나감"):
                         self.runs += 1
                         self.l_runs.configure(text=str(self.runs))
+                elif kind == "scan":
+                    self._gear_scan()
                 elif kind == "restart":
                     self.runs += 1
                     self.l_runs.configure(text=str(self.runs))

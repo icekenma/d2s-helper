@@ -16,7 +16,7 @@ EQUIP = [("투구", (561, 93)), ("목걸이", (620, 106)), ("무기", (447, 159)
          ("방패_화살통", (678, 159)), ("장갑", (447, 265)), ("반지1", (506, 249)), ("허리띠", (561, 249)),
          ("반지2", (620, 249)), ("신발", (678, 265))]
 STASH_X, STASH_Y, STASH_COLS, STASH_ROWS = 95, 65, 10, 12
-SCAN_TABS = ["개인", "공유 1", "공유 2", "공유 3"]
+SCAN_TABS = sorter.STASH_ORDER
 
 
 def _color_at(norm, x, y, cell):
@@ -42,8 +42,9 @@ def scan(io, base_dir, log, stop=None):
         log("장비 스캔: 게임 화면을 읽지 못함")
         return None
     geo = sorter.Geo(f)
-    if sorter.seen(geo.normalize(f), "panel") < 0.6:
-        log("장비 스캔: 대장장이 창이 열려 있지 않음. 마을에서 대장장이 창을 연 뒤 다시 누르세요")
+    n0 = geo.normalize(f)
+    if sorter.seen(n0, "panel") < 0.6 and not sorter.stash_open(n0):
+        log("장비 스캔: 대장장이 창(또는 보관함)이 열려 있지 않음. 마을에서 연 뒤 다시 누르세요")
         return None
     out = os.path.join(base_dir, "gear_scan", time.strftime("%Y%m%d_%H%M%S"))
     os.makedirs(out, exist_ok=True)
@@ -105,12 +106,16 @@ def scan(io, base_dir, log, stop=None):
         if halted():
             break
         n_ = geo.normalize(io.grab())
-        io.click(*geo.raw(*sorter.ui_tabs(n_)[1]))
-        time.sleep(0.5)
-        park()
-        (dx, dy), _ = sorter.stash_shift(geo.normalize(io.grab()))
-        sx, sy = sorter.STASH_SUBTABS[tab]
-        io.click(*geo.raw(sx + dx, sy + dy))
+        if not sorter.stash_open(n_):
+            io.click(*geo.raw(*sorter.ui_tabs(n_)[1]))
+            time.sleep(0.5)
+            park()
+        n_ = geo.normalize(io.grab())
+        tabs = sorter.stash_tabs(n_)
+        if tab not in tabs:
+            continue                           # (the old stash has 3 shared tabs)
+        (dx, dy), _ = sorter.stash_shift(n_)
+        io.click(*geo.raw(*tabs[tab]))
         time.sleep(0.5)
         base = park()
         nb = geo.normalize(base)
@@ -132,7 +137,9 @@ def scan(io, base_dir, log, stop=None):
         log("장비 스캔: 보관함 %s %d개" % (tab, got))
     # back to the shop tab, cursor off the items
     try:
-        io.click(*geo.raw(*sorter.ui_tabs(geo.normalize(io.grab()))[0]))
+        n_ = geo.normalize(io.grab())
+        if sorter.seen(n_, "panel") >= 0.6:
+            io.click(*geo.raw(*sorter.ui_tabs(n_)[0]))
     except Exception:
         pass
     park()

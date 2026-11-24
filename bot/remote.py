@@ -240,9 +240,18 @@ class Remote:
                 if u.path == "/api/toggle" and method == "POST":
                     remote.toggle()
                     return self._send(200, b"{}", "application/json")
-                if u.path == "/api/sort" and method == "POST":
-                    remote.sort()
+                if u.path in ("/api/sort", "/api/scan") and method == "POST":
+                    remote.sort()                # (this slot now starts the gear scan)
                     return self._send(200, b"{}", "application/json")
+                if u.path == "/scan/latest.zip" and method == "GET":
+                    d = os.path.join(remote.base, "gear_scan")
+                    zips = sorted(z for z in (os.listdir(d) if os.path.isdir(d) else []) if z.endswith(".zip"))
+                    if not zips:
+                        return self._send(404, "아직 장비 스캔 결과가 없음".encode("utf-8"), "text/plain; charset=utf-8")
+                    with open(os.path.join(d, zips[-1]), "rb") as f:
+                        data = f.read()
+                    return self._send(200, data, "application/zip",
+                                      {"Content-Disposition": 'attachment; filename="gear_scan_%s"' % zips[-1]})
                 if u.path in ("/api/tap", "/api/drag", "/api/key") and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)

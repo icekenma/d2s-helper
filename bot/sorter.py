@@ -17,10 +17,13 @@ from . import paths
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
 TAB_SHOP2, TAB_STASH2 = (136, 17), (345, 17)            # new window (2026-11): 파라 / 도박 / 보관함, wider tabs
-STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}
+STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}   # old: 3 shared
+STASH_SUBTABS2 = {"개인": (131, 52), "공유 1": (174, 52), "공유 2": (201, 52), "공유 3": (230, 52),       # new: 6 shared
+                  "공유 4": (258, 52), "공유 5": (286, 52), "공유 6": (315, 52)}
+STASH_ORDER = ["개인", "공유 1", "공유 2", "공유 3", "공유 4", "공유 5", "공유 6"]
 PARK = (400, 500)   # empty stone area between the two panels' bottoms
 # name -> (file, expected top-left x, y)
-MARKS = {"menu_back": ("menu_back.png", 300, 152), "menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
+MARKS = {"subtabs2": ("subtabs2.png", 162, 44), "menu_back": ("menu_back.png", 300, 152), "menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
          "personal": ("stash_personal.png", 104, 40), "shop": ("shop.png", 100, 66),
          "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70)}
 FORGE_OK = (214, 321)            # the check button under the anvil
@@ -104,6 +107,16 @@ def stash_shift(norm):
     sc2, bx, by = find_mark(norm, "stash")
     bottom = (bx, by) if sc2 >= 0.6 else (0, 0)
     return top, bottom
+
+
+def stash_tabs(norm):
+    """Sub-tab positions of the stash on screen (new look: 개인, 1..6, 고유 / old: 개인, 3 shared, 고유),
+    already moved by where the row really is. Includes "고유"."""
+    new = norm is not None and "subtabs2" in _marks and _seen("subtabs2", norm, pad=12) >= 0.6
+    (dx, dy), _ = stash_shift(norm) if norm is not None else ((0, 0), None)
+    tabs = dict(STASH_SUBTABS2 if new else STASH_SUBTABS)
+    tabs["고유"] = (356, 52) if new else TAB_UNIQUE
+    return {k: (x + dx, y + dy) for k, (x, y) in tabs.items()}
 
 
 def stash_open(norm):
@@ -411,9 +424,8 @@ def run(io, opts, base_dir, log, stop):
     if kinds & {"stash", "sell_low"} and not stop.is_set():
         tap(ui_tabs(shot())[1], wait=0.5)
         park()
-        (dx, dy), _ = stash_shift(shot())
-        sx, sy = STASH_SUBTABS.get(opts.get("stash_tab", "개인"), STASH_SUBTABS["개인"])
-        tap((sx + dx, sy + dy), wait=0.4)
+        tabs = stash_tabs(shot())
+        tap(tabs.get(opts.get("stash_tab", "개인"), tabs["개인"]), wait=0.4)
         park()
         if not stash_open(shot()):
             log("보관함 화면을 확인하지 못해 보관을 건너뜀")
@@ -578,12 +590,17 @@ def cleanup(io, opts, base_dir, log, stop):
 
     shift = {"bottom": (0, 0)}
 
-    def open_stash(sub):
-        """Stash tab of the smith's window (old or new look), then one of its sub-tabs. -> opened?"""
-        tap(ui_tabs(norm_now())[1], wait=0.5)
-        _park(io, geo)
-        (dx, dy), bottom = stash_shift(norm_now())
-        tap((sub[0] + dx, sub[1] + dy), wait=0.45)
+    def open_stash(name):
+        """Stash tab of the smith's window (old or new look), then one of its sub-tabs by name
+        ("개인", "공유 1".., "고유"). -> opened? (False also when this stash has no such tab)"""
+        n0 = norm_now()
+        if n0 is None or not stash_open(n0):
+            tap(ui_tabs(n0)[1], wait=0.5)
+            _park(io, geo)
+        tabs = stash_tabs(norm_now())
+        if name not in tabs:
+            return False
+        tap(tabs[name], wait=0.45)
         _park(io, geo)
         n_ = norm_now()
         if n_ is None or not stash_open(n_):
@@ -749,7 +766,7 @@ def cleanup(io, opts, base_dir, log, stop):
     if not gold_green and not plan.get("register") and not plan.get("swap"):
         pass
     else:
-        if not open_stash(TAB_UNIQUE):
+        if not open_stash("고유"):
             log("보관함 고유 탭을 확인하지 못해 등록을 건너뜀")
         else:
             seen_items = {c_: tip_of.get(c_) for c_ in footprint}
@@ -810,7 +827,7 @@ def cleanup(io, opts, base_dir, log, stop):
     # 2) stash: essences to the personal tab, keepers to the chosen tab
     def stash_pass(tab_name, kinds):
         """-> how many items would not go in (the tab is full)."""
-        if not open_stash(STASH_SUBTABS.get(tab_name, STASH_SUBTABS["개인"])):
+        if not open_stash(tab_name):
             log("보관함 %s 탭을 확인하지 못함" % tab_name)
             return 0
         refused = [0]
@@ -832,7 +849,7 @@ def cleanup(io, opts, base_dir, log, stop):
 
     def stash_all(first_tab, kinds):
         """Fill first_tab, then spill over into the tabs after it."""
-        order = list(STASH_SUBTABS.keys())
+        order = list(STASH_ORDER)
         start = order.index(first_tab) if first_tab in order else 0
         for tab in order[start:]:
             if stop.is_set():
