@@ -210,6 +210,7 @@ class Engine(threading.Thread):
                 return True
             if self.to_town:
                 self._tap(Key.esc)          # back to town; the waypoint step picks the lower stage
+                self.state["town_check"] = now + 40
                 self.last_enter = now
                 self.emit("restart", None)
                 self.log("Esc로 마을 이동")
@@ -262,8 +263,14 @@ class Engine(threading.Thread):
             why = "보스 처치 후 %d초 동안 진행이 없음" % int(max(quiet, now - over_at))
         else:
             # anywhere else: no log line and no ticking run timer for 2 minutes means something is wrong
-            due = False                    # turned off at the user's request (only the after-the-boss check stays)
-            why = ""
+            due, why = False, ""           # the general 2-minute check is off at the user's request
+            tc = st.get("town_check")
+            if tc and frame is not None:
+                if sorter.out_of_stage(frame):
+                    st["town_check"] = None              # town (or loading) reached
+                elif now > tc:
+                    st["town_check"] = None
+                    due, why = True, "마을로 가려 했는데 40초 뒤에도 사냥터에 있음"
         if not due or now - self.exit_at < 30:
             return False
         if not self.lock.acquire(timeout=3):

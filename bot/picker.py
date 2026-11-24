@@ -794,6 +794,7 @@ class Picker:
                                  attempt=self.exit_tries):
             self.state["over"] = False
             self.state["run_reset"] = time.time()
+            self.state["town_check"] = time.time() + 40
             self.frame = None
             self.log("마을로 나감: 저장 후 나가기 (다음 판)")
             return

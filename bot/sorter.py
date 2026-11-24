@@ -20,7 +20,7 @@ TAB_SHOP2, TAB_STASH2 = (136, 17), (345, 17)            # new window (2026-11): 
 STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}
 PARK = (400, 500)   # empty stone area between the two panels' bottoms
 # name -> (file, expected top-left x, y)
-MARKS = {"menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
+MARKS = {"menu_back": ("menu_back.png", 300, 152), "menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
          "personal": ("stash_personal.png", 104, 40), "shop": ("shop.png", 100, 66),
          "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70)}
 FORGE_OK = (214, 321)            # the check button under the anvil
@@ -162,6 +162,8 @@ def run_ended(norm, base_dir):
     death in a new stage the hint reads 'ENTER: 공포 영역 N' instead, so 'ENTER:' alone counts too."""
     if _again[0] is None:
         _again[0] = (_gold(_asset(base_dir, "again.png")), _gold(_asset(base_dir, "enter.png")))
+    if menu_text(norm) >= 0.55 or confirm_shown(norm):
+        return 0.0                                # the Esc menu (its hint line looks like the end screen's)
     roi = _gold(norm[360:580, 100:700])
     return max(_match(roi, _again[0][0]), _match(roi, _again[0][1]) - 0.1)
 
@@ -980,7 +982,8 @@ def esc_menu_open(norm):
              and 15 <= st[i][2] <= 60 and 15 <= st[i][3] <= 60]
     left = [bl for bl in blobs if 120 < bl[0] < 390]
     right = [bl for bl in blobs if 410 < bl[0] < 680]
-    return any(abs(l[1] - r_[1]) < 10 and abs((l[0] + r_[0]) / 2.0 - 400) < 40 for l in left for r_ in right)
+    pair = any(abs(l[1] - r_[1]) < 10 and abs((l[0] + r_[0]) / 2.0 - 400) < 40 for l in left for r_ in right)
+    return pair and lit_row(norm) is not None     # beside one of the menu's five lines
 
 
 def out_of_stage(frame):
@@ -992,13 +995,40 @@ def out_of_stage(frame):
     return spot.area_mask(crop, (h - top) / 600.0).sum() < 1500
 
 
+def _textmap(img):
+    """Lettering brighter than what is around it: the same whatever the brightness and the scene behind."""
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    return (g > cv2.blur(g, (31, 31)) * 1.4 + 4).astype(np.float32)
+
+
+def menu_text(norm):
+    """How strongly the Esc menu's lines ("게임으로 돌아가기", "저장 후 나가기") show (0..1)."""
+    if norm is None:
+        return 0.0
+    best = 0.0
+    for k in ("menu_exit", "menu_back"):
+        if k not in _marks:
+            continue
+        best = max(best, _seen(k, norm, pad=30))
+        img, x, y = _marks[k]
+        h, w = img.shape[:2]
+        y0, x0 = max(0, y - 40), max(0, x - 40)
+        roi = norm[y0:y + h + 40, x0:x + w + 40]
+        if roi.shape[0] >= h and roi.shape[1] >= w:
+            v = cv2.minMaxLoc(cv2.matchTemplate(_textmap(roi), _textmap(img), cv2.TM_CCOEFF_NORMED))[1]
+            if np.isfinite(v):
+                best = max(best, float(v) + 0.1)     # (the text map scores lower than a picture match)
+    return best
+
+
 def menu_open(norm):
-    """The Esc menu is up: its "저장 후 나가기" line, or a pair of red pentagrams beside a line."""
+    """The Esc menu is up: its lines, or a pair of red pentagrams beside one of its lines."""
     if norm is None:
         return False
-    if "menu_exit" in _marks and _seen("menu_exit", norm, pad=30) >= 0.55:
+    v = menu_text(norm)
+    if v >= 0.55:
         return True
-    return esc_menu_open(norm)
+    return v >= 0.4 and esc_menu_open(norm)      # weaker lines + pentagrams beside a menu line
 
 
 def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
@@ -1058,6 +1088,11 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
     if confirm_shown(n):
         pass                                      # the box is already up (left from a try before)
     elif not menu_open(n):
+        time.sleep(0.8)                           # (it may open a little late)
+        f, n = norm_now()
+        if n is None:
+            return False
+    if not confirm_shown(n) and not menu_open(n):
         log("Esc를 눌렀지만 메뉴가 보이지 않음")
         close_all()
         return False
