@@ -488,11 +488,13 @@ class Picker:
         self.state["over"] = False
 
     # ---- town -------------------------------------------------------------------------------
-    def _wp_rows(self, frame, geo):
+    def _wp_rows(self, frame, geo, n=9, row1=None, pitch=None):
         """What each row of the open waypoint list says: [(reads '완료한', reads '공포 영역')]."""
+        row1 = sorter.WP_ROW1 if row1 is None else row1
+        pitch = sorter.WP_PITCH if pitch is None else pitch
         out = []
-        for k in range(9):
-            ny = sorter.WP_ROW1 + sorter.WP_PITCH * k
+        for k in range(n):
+            ny = row1 + pitch * k
             x0, y0 = geo.raw(132, ny - 13)
             x1, y1 = geo.raw(330, ny + 11)
             m = spot.area_mask(frame[max(0, y0):y1, max(0, x0):x1], geo.s, gold=True)
@@ -517,22 +519,30 @@ class Picker:
             return True
         rows = self._wp_rows(frame, geo)
         stage = int(self.state.get("target", self.opts.get("town_stage", 0)) or 0)
-        main = sorter.seen(geo.normalize(frame), "wp_main") >= 0.8
+        main = sorter.seen(geo.normalize(frame), "wp_main") >= 0.75
         self.wp_time = now
         if main:
             self.wp_list_tab = None
-            done = [k for k, r in enumerate(rows) if r[0] >= 0.7]
+            # '완료한 단계 다시 하기': the row that reads it clearly better than all the others
+            # (the newest stage's entry is two lines tall, so this row is not at a fixed place)
+            order = sorted(range(len(rows)), key=lambda k: -rows[k][0])
+            best = order[0]
+            done = [best] if rows[best][0] >= 0.55 and rows[best][0] - rows[order[1]][0] >= 0.2 else []
             if stage <= 0 or self.wp_frontier:
-                if rows[0][1] >= 0.7 and rows[0][0] < 0.6:
+                # the newest open stage: the first '공포 영역' row above '완료한 단계 다시 하기'
+                stop_at = done[0] if done else len(rows)
+                fr = [k for k in range(stop_at) if rows[k][1] >= 0.6 and rows[k][0] < 0.55]
+                if fr:
                     self.wp_frontier = False
-                    self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1))
-                    self.log("웨이포인트: 목록 맨 위 공포 영역(새로 열린 단계) 시작")
+                    self.wp_miss = 0
+                    self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1 + sorter.WP_PITCH * fr[0]))
+                    self.log("웨이포인트: 새로 열린 공포 영역(%d번째 줄) 시작" % (fr[0] + 1))
                     return True
                 if stage <= 0:
                     self.wp_miss += 1
                     if self.wp_miss % 5 == 1:
-                        self.log("웨이포인트: 목록 맨 위 줄이 '공포 영역'으로 읽히지 않음 (일치 %.2f) - 다시 확인"
-                                 % rows[0][1])
+                        self.log("웨이포인트: '공포 영역' 줄을 찾지 못함 (일치 %.2f) - 다시 확인"
+                                 % max(r[1] for r in rows))
                     return True
             if done:
                 self.wp_miss = 0
@@ -543,15 +553,18 @@ class Picker:
             self.wp_miss += 1
             self.wp_main_tab = 1 if self.wp_main_tab is None else (self.wp_main_tab + 1) % 5
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * self.wp_main_tab, sorter.WP_TAB_Y))
-            self.log("웨이포인트: 이 탭에는 공포 영역이 없음 → %d번째 탭 확인" % (self.wp_main_tab + 1))
+            self.log("웨이포인트: 이 탭에서 '완료한 단계 다시 하기'를 못 찾음 (일치 %.2f) → %d번째 탭 확인"
+                     % (rows[best][0], self.wp_main_tab + 1))
             return True
-        # the stage list (tabs 1-9, 10-18, ...)
+        # the stage list (tabs 1-10, 11-20, 21-28)
+        per = sorter.WP_PER_TAB
+        rows = self._wp_rows(frame, geo, per, sorter.WP_LIST_ROW1, sorter.WP_LIST_PITCH)
         if stage <= 0 or self.wp_frontier:
             self.io.key(Key.esc)                      # the newest stage is on the first page: close and reopen
             self.wp_list_tab = None
             self.log("웨이포인트: 단계 목록이 열려 있어 닫고 첫 화면에서 다시 고름")
             return True
-        tab, row = (stage - 1) // 9, (stage - 1) % 9
+        tab, row = (stage - 1) // per, (stage - 1) % per
         lit = sorter.wp_lit_tab(geo.normalize(frame))
         if self.wp_list_tab != tab or lit != tab:
             # click the stage's tab and do not go on until that tab really is the open one
@@ -563,10 +576,10 @@ class Picker:
                 self.wp_list_tab = None
                 self.io.key(Key.esc)
                 self.log("웨이포인트: %d~%d단계 탭이 열리지 않음 (열린 탭: %s) - 목록을 닫고 다시"
-                         % (tab * 9 + 1, tab * 9 + 9, "모름" if lit is None else "%d~%d" % (lit * 9 + 1, lit * 9 + 9)))
+                         % (tab * per + 1, tab * per + per, "모름" if lit is None else "%d~%d" % (lit * per + 1, lit * per + per)))
                 return True
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * tab, sorter.WP_TAB_Y))
-            self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * 9 + 1, tab * 9 + 9))
+            self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * per + 1, tab * per + per))
             return True
         self.wp_tab_tries = 0
         if rows[row][1] < 0.6:
@@ -582,7 +595,7 @@ class Picker:
             self.log("웨이포인트: %d번째 줄이 비어 있거나 '공포 영역'이 아님 (일치 %.2f)" % (row + 1, rows[row][1]))
             return True
         self.wp_miss = 0
-        self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1 + sorter.WP_PITCH * row))
+        self.io.click(*geo.raw(sorter.WP_X, sorter.WP_LIST_ROW1 + sorter.WP_LIST_PITCH * row))
         self.log("웨이포인트: 공포 영역 %d 시작" % stage)
         self.wp_list_tab = None
         return True

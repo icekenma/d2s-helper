@@ -653,8 +653,9 @@ def inventory_open(io):
     return f is not None and seen(Geo(f).normalize(f), "inv") >= 0.7
 
 
-WP_TAB1, WP_TAB_PITCH, WP_TAB_Y = 119, 63, 75        # waypoint tabs (nine stages per tab)
-WP_X, WP_ROW1, WP_PITCH = 230, 135, 36.1
+WP_TAB1, WP_TAB_PITCH, WP_TAB_Y = 119, 63, 75        # waypoint tabs (I~V / 1-10, 11-20, 21-28)
+WP_X, WP_ROW1, WP_PITCH = 230, 135, 36.1              # first page (보통/악몽/지옥/공포 영역 N/완료한 단계 다시 하기)
+WP_PER_TAB, WP_LIST_ROW1, WP_LIST_PITCH = 10, 136, 32.1   # stage list: ten stages per tab, closer rows
 
 
 def wp_lit_tab(norm):
