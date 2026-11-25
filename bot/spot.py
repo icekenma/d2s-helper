@@ -62,7 +62,7 @@ def width(name):
     return max(ws) if ws else 0
 
 
-def search(frame, s, names, need=0.7, any_colour=False, alone=True, every=False):
+def search(frame, s, names, need=0.7, any_colour=False, alone=True, every=False, max_hits=8):
     """Look for whole name labels anywhere in the game view. -> [(name, score, centre x, bottom y)] in
     frame pixels, best first. Does not depend on the label having been boxed first. Works at half
     resolution to stay quick; a hit is then checked at full resolution."""
@@ -95,7 +95,7 @@ def search(frame, s, names, need=0.7, any_colour=False, alone=True, every=False)
                                 anchor=(0, 0), borderType=cv2.BORDER_CONSTANT)[:res.shape[0], :res.shape[1]]
             res[~np.isfinite(res)] = 0
             res[ink < 0.4 * float(small.sum())] = 0
-            for _round in range(8 if every else 1):
+            for _round in range(max_hits if every else 1):
                 _, v0, _, loc = cv2.minMaxLoc(res)
                 if v0 < need - 0.2:
                     break
