@@ -521,7 +521,16 @@ def inventory_open(io):
 
 
 WP_TAB1, WP_TAB_PITCH, WP_TAB_Y = 119, 63, 75        # waypoint tabs (nine stages per tab)
-WP_X, WP_ROW1, WP_PITCH = 230, 135, 36.1     # waypoint list: click x, first row centre, row spacing
+WP_X, WP_ROW1, WP_PITCH = 230, 135, 36.1
+
+
+def wp_lit_tab(norm):
+    """Which of the waypoint list's five tabs is the open one (it is drawn lighter). None if unclear."""
+    g = cv2.cvtColor(norm[64:86], cv2.COLOR_BGR2GRAY).astype(np.float32)
+    v = [float(g[:, int(WP_TAB1 + WP_TAB_PITCH * i) - 25:int(WP_TAB1 + WP_TAB_PITCH * i) + 25].mean())
+         for i in range(5)]
+    order = sorted(range(5), key=lambda i: -v[i])
+    return order[0] if v[order[0]] - v[order[1]] >= 12 else None     # waypoint list: click x, first row centre, row spacing
 BTN_COLLECT = (265, 461)        # "수집": the game's own register-everything-new button
 TAB_UNIQUE = (355, 51)          # the "고유" (collection) sub-tab of the stash
 

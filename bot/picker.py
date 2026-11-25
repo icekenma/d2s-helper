@@ -552,11 +552,23 @@ class Picker:
             self.log("웨이포인트: 단계 목록이 열려 있어 닫고 첫 화면에서 다시 고름")
             return True
         tab, row = (stage - 1) // 9, (stage - 1) % 9
-        if self.wp_list_tab != tab:
+        lit = sorter.wp_lit_tab(geo.normalize(frame))
+        if self.wp_list_tab != tab or lit != tab:
+            # click the stage's tab and do not go on until that tab really is the open one
+            # (otherwise row 1 of the 1~9 tab = stage 1 would be clicked for stage 10)
+            self.wp_tab_tries = (getattr(self, "wp_tab_tries", 0) + 1) if self.wp_list_tab == tab else 1
             self.wp_list_tab = tab
+            if self.wp_tab_tries > 6:
+                self.wp_tab_tries = 0
+                self.wp_list_tab = None
+                self.io.key(Key.esc)
+                self.log("웨이포인트: %d~%d단계 탭이 열리지 않음 (열린 탭: %s) - 목록을 닫고 다시"
+                         % (tab * 9 + 1, tab * 9 + 9, "모름" if lit is None else "%d~%d" % (lit * 9 + 1, lit * 9 + 9)))
+                return True
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * tab, sorter.WP_TAB_Y))
             self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * 9 + 1, tab * 9 + 9))
             return True
+        self.wp_tab_tries = 0
         if rows[row][1] < 0.6:
             self.wp_miss += 1
             if self.wp_miss >= 2:
