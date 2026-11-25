@@ -117,16 +117,18 @@ class Engine(threading.Thread):
                     if now - self.panel_esc > 1.0 and self.lock.acquire(False):
                         try:
                             self.panel_esc = now
-                            self._tap(Key.esc)
-                            self.log("이동 중 대장장이 창이 열려 닫고 계속 이동")
+                            if not self._restore_worn():
+                                self._tap(Key.esc)
+                                self.log("이동 중 대장장이 창이 열려 닫고 계속 이동")
                         finally:
                             self.lock.release()
                 elif self.cleaned_open and fg and now - self.panel_esc > 2.5 and self.lock.acquire(False):
                     # tidied already but the window is still open (an Esc went missing): close it again
                     try:
                         self.panel_esc = now
-                        self._tap(Key.esc)
-                        self.log("대장장이 창이 아직 열려 있어 다시 닫음")
+                        if not self._restore_worn():
+                            self._tap(Key.esc)
+                            self.log("대장장이 창이 아직 열려 있어 다시 닫음")
                     finally:
                         self.lock.release()
                 elif not self.cleaned_open and self.lock.acquire(False):
@@ -135,6 +137,8 @@ class Engine(threading.Thread):
                     try:
                         # every time the window opens: an empty inventory makes this a quick no-op
                         self.log("대장장이 창 확인: 자동 정리 시작")
+                        if sorter.restore_worn(io, self.log, lambda: self.emit("halt", None)):
+                            return True
                         text, done = sorter.cleanup(io, self.cfg.get("sort", {}), self.base, self.log,
                                                     self.stop_flag)
                         self.log(text)
@@ -245,6 +249,15 @@ class Engine(threading.Thread):
                 and not self.state.get("over"):
             self.state["progress_at"] = now
         self.clock_prev = digits.astype(int)
+
+    def _restore_worn(self):
+        io = GameIO(self.cfg.get("window_title", "D2 Survivors"))
+        try:
+            return sorter.restore_worn(io, self.log, lambda: self.emit("halt", None))
+        except Exception:
+            return False
+        finally:
+            io.close()
 
     def _stuck(self, fg, dry, frame=None):
         """Last resort: nothing has happened for 2 minutes after the boss died (or 3 minutes have gone

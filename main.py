@@ -489,6 +489,8 @@ class App(tk.Tk):
             self.l_state.configure(text="진행 중  %02d:%02d:%02d" % (s // 3600, s % 3600 // 60, s % 60), fg=GREEN)
         self._share()
         self._maybe_restart()
+        if self.engine is not None and self.engine.state.pop("halt_now", False):
+            self.halt()
         try:
             self.l_upd.configure(text="자동 업데이트: " + self.upd.status)
         except Exception:

@@ -1032,6 +1032,11 @@ class Picker:
                         t0 = time.perf_counter()
                         for k in list(held):
                             self.io.key_up(k)
+                        try:
+                            if sorter.restore_worn(self.io, self.log, lambda: self.state.__setitem__("halt_now", True)):
+                                return True
+                        except Exception:
+                            pass
                         self.io.key(Key.esc)
                         time.sleep(0.3)
                         watch.clear()

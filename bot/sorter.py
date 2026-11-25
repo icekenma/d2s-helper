@@ -279,6 +279,76 @@ def tooltip_crop(base, hover, geo):
     return hover[max(0, y - p):y2 + p, max(0, x - p):x2 + p].copy()
 
 
+# worn-item slots of the right-hand panel (800x600 layout): name, centre, half width, half height
+WORN_SLOTS = [("무기", (447, 159), 18, 40), ("방패·화살통", (678, 159), 18, 40), ("투구", (561, 93), 18, 18),
+              ("갑옷", (561, 178), 20, 30), ("목걸이", (620, 106), 8, 8), ("장갑", (447, 265), 16, 16),
+              ("반지1", (506, 249), 8, 8), ("허리띠", (561, 249), 18, 8), ("반지2", (620, 249), 8, 8),
+              ("신발", (678, 265), 16, 16)]
+
+
+def empty_worn(norm):
+    """Names of worn-item slots that look empty (dark, no item tint) while the panel is open."""
+    out = []
+    for name, (x, y), hw, hh in WORN_SLOTS:
+        r = norm[y - hh:y + hh, x - hw:x + hw]
+        if r.size == 0:
+            continue
+        g = cv2.cvtColor(r, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        sat = cv2.cvtColor(r, cv2.COLOR_BGR2HSV)[:, :, 1].astype(np.float32)
+        if g.mean() < 30 and sat.mean() < 90:
+            out.append(name)
+    return out
+
+
+def _gray_layout(io, geo, pt):
+    io.move(*geo.raw(*pt))
+    time.sleep(0.25)
+    f = io.grab()
+    return None if f is None else cv2.cvtColor(geo.normalize(f), cv2.COLOR_BGR2GRAY).astype(np.int16)
+
+
+def item_on_cursor(io, geo):
+    """Is an item hanging on the mouse cursor? (only with a panel open: the spots are fixed stone/UI)
+    The cursor rests on spot A, then on spot B: an item on the cursor shows up at A only when the cursor is
+    there, a big patch; the bare hand cursor is small."""
+    A, B = (400, 500), (400, 562)
+    ga = _gray_layout(io, geo, A)
+    gb = _gray_layout(io, geo, B)
+    if ga is None or gb is None:
+        return False
+    x, y = A
+    d = np.abs(ga[y - 45:y + 75, x - 45:x + 45] - gb[y - 45:y + 75, x - 45:x + 45]) > 30
+    return int(d.sum()) > 1200
+
+
+def restore_worn(io, log, halt=None):
+    """Safety net before any window is closed or anything else is clicked: an item picked up by a stray
+    click (e.g. the worn bow) hangs on the cursor, and closing the window would drop it on the ground.
+    Such an item is laid in an empty bag cell instead, and the helper stops (halt) so it can be checked.
+    -> True when an item was found on the cursor."""
+    f = io.grab()
+    if f is None:
+        return False
+    geo = Geo(f)
+    n = geo.normalize(f)
+    if seen(n, "inv") < 0.7:
+        return False                               # no bags on screen: nothing to lay it in
+    if not item_on_cursor(io, geo):
+        return False
+    inv = read_inventory(geo.normalize(io.grab()))
+    spot = next(((c, r) for r in range(INV_ROWS) for c in range(INV_COLS) if not inv[r][c]), None)
+    if spot is None:
+        log("마우스에 아이템이 들려 있는데 인벤토리에 빈칸이 없음 - 자동 진행을 멈춤 (창을 닫지 마세요)")
+    else:
+        io.click(*geo.raw(*cell_center(*spot)))
+        time.sleep(0.4)
+        log("마우스에 아이템이 들려 있어 인벤토리 빈칸(%d,%d)에 내려놓음 - 착용 장비였는지 확인하세요. 자동 진행을 멈춤"
+            % (spot[0] + 1, spot[1] + 1))
+    if halt:
+        halt()
+    return True
+
+
 def forged_tip(tip):
     """An item the player has reinforced (강화): its boosted lines are drawn in orange ("... ×4").
     Such an item is the player's own work: never registered, sold or moved by the sorter."""
