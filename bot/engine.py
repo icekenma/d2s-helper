@@ -23,7 +23,12 @@ for _i in range(1, 13):
 
 
 STAGE_LIMIT = 240         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
-FAST_LIMIT = 180          # the same in 패스트 모드
+FAST_LIMIT = 160          # the same in 패스트 모드 (2:40)
+
+
+def limit_text(sec):
+    sec = int(sec)
+    return "%d분" % (sec // 60) if sec % 60 == 0 else "%d분 %d초" % (sec // 60, sec % 60)
 
 
 def stage_limit(state):
@@ -301,7 +306,7 @@ class Engine(threading.Thread):
         if not si and not self.need_out:
             st["stage_in"] = now
             runlog.start(now, st.get("target", 0))
-            self.log("사냥터 입장: %d분 뒤에는 무조건 다음 판으로%s" % (stage_limit(st) // 60,
+            self.log("사냥터 입장: %s 뒤에는 무조건 다음 판으로%s" % (limit_text(stage_limit(st)),
                                                                  " (패스트 모드)" if st.get("fast") else ""))
 
     def _stuck(self, fg, dry, frame=None):
@@ -322,9 +327,9 @@ class Engine(threading.Thread):
             # '저장 후 나가기' would drop to the game's main menu. Nothing to leave.
             st["stage_in"] = si = None
             runlog.end(float(st.get("run_text_at") or now), "사냥터를 나감")
-            self.log("%d분 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음" % (limit // 60))
+            self.log("%s 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음" % limit_text(limit))
         if si and now - si >= limit:
-            due, why = True, "포탈로 들어간 지 %d분 지남 (무조건 다음 판)" % int((now - si) // 60)
+            due, why = True, "사냥터에 들어간 지 %s 지남 (무조건 다음 판)" % limit_text(limit)
         elif st.get("over"):
             over_at = st.get("over_at", now)
             quiet = now - max(st["progress_at"], over_at)

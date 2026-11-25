@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 from pynput import keyboard
 
 from bot import scorer, sorter, spot, win
-from bot.engine import Engine, STAGE_LIMIT, stage_limit
+from bot.engine import Engine, STAGE_LIMIT, stage_limit, limit_text
 from bot.keyrec import KeyRecorder
 from bot.picker import PickerThread
 from bot.record import Recorder
@@ -338,7 +338,7 @@ class App(tk.Tk):
             self.picker.p.opts["fast_mode"] = on
         if self.engine is not None:
             self.engine.state["fast"] = on
-        self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판, 3분 지나면 무조건 다음 판 (아이템 줍기·정리 안 함)" if on
+        self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판, 2분 40초 지나면 무조건 다음 판 (아이템 줍기·정리 안 함)" if on
                                             else "끔: 녹음 경로·줍기·대장장이 정리를 다시 함"))
         self._share()
 
@@ -530,7 +530,7 @@ class App(tk.Tk):
         left = self._stage_left()
         if left is None:
             self.l_cd.configure(text="-:--", fg=DIM)
-            self.l_cd_note.configure(text="사냥터 들어가면 %d분 셈" % (self._limit() // 60) if self.engine else "다음 판까지")
+            self.l_cd_note.configure(text="사냥터 들어가면 %s 셈" % limit_text(self._limit()) if self.engine else "다음 판까지")
         else:
             sec = int(left + 0.999)
             self.l_cd.configure(text="%d:%02d" % (sec // 60, sec % 60), fg=RED if sec <= 30 else GOLD)
