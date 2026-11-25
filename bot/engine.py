@@ -23,6 +23,11 @@ for _i in range(1, 13):
 
 
 STAGE_LIMIT = 240         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
+FAST_LIMIT = 180          # the same in 패스트 모드
+
+
+def stage_limit(state):
+    return FAST_LIMIT if (state or {}).get("fast") else STAGE_LIMIT
 
 
 def grab_client(sct, rect):
@@ -296,7 +301,8 @@ class Engine(threading.Thread):
         if not si and not self.need_out:
             st["stage_in"] = now
             runlog.start(now, st.get("target", 0))
-            self.log("사냥터 입장: %d분 뒤에는 무조건 다음 판으로" % (STAGE_LIMIT // 60))
+            self.log("사냥터 입장: %d분 뒤에는 무조건 다음 판으로%s" % (stage_limit(st) // 60,
+                                                                 " (패스트 모드)" if st.get("fast") else ""))
 
     def _stuck(self, fg, dry, frame=None):
         """Last resort: nothing has happened for 2 minutes after the boss died (or 3 minutes have gone
@@ -310,13 +316,14 @@ class Engine(threading.Thread):
         quiet_all = now - st["progress_at"]
         self._stage_clock(frame, now)
         si = st.get("stage_in")
-        if si and now - si >= STAGE_LIMIT and st.get("run_text_at") and now - st["run_text_at"] > 10:
+        limit = stage_limit(st)
+        if si and now - si >= limit and st.get("run_text_at") and now - st["run_text_at"] > 10:
             # the run info ('N막 - 공포 영역 ...') has been gone for a while: already in town, where
             # '저장 후 나가기' would drop to the game's main menu. Nothing to leave.
             st["stage_in"] = si = None
             runlog.end(float(st.get("run_text_at") or now), "사냥터를 나감")
-            self.log("4분 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음")
-        if si and now - si >= STAGE_LIMIT:
+            self.log("%d분 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음" % (limit // 60))
+        if si and now - si >= limit:
             due, why = True, "포탈로 들어간 지 %d분 지남 (무조건 다음 판)" % int((now - si) // 60)
         elif st.get("over"):
             over_at = st.get("over_at", now)

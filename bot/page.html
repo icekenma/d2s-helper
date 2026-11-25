@@ -333,7 +333,7 @@ summary::-webkit-details-marker{display:none}
   </div>
   <div class="cd idle" id="cd" hidden aria-live="off">
    <span class="lbl" id="cdLbl">다음 판까지</span>
-   <span class="sub" id="cdSub">사냥터에 들어가면 4분을 셉니다</span>
+   <span class="sub" id="cdSub">사냥터에 들어가면 시간을 셉니다</span>
    <span class="num" id="cdNum">-:--</span>
    <div class="cdbar"><i id="cdBar"></i></div>
   </div>
@@ -408,7 +408,7 @@ function status(){
 /* fast mode: one tap, sent at once; the PC's value shows otherwise */
 var fastOn=false,fastBusy=0;
 function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));
- $("fastSub").textContent=fastOn?"켜짐: 보스를 잡으면 Esc로 바로 다음 판 · 정수만 모음":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
+ $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 3분이 지나면 바로 다음 판 · 정수만 모음":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
 $("fastBtn").onclick=function(){fastOn=!fastOn;fastBusy=Date.now()+4000;fastDraw();post("/api/fast",{on:fastOn}).catch(function(){})};
 /* stage to repeat: edited here, sent with 적용; the PC's value shows when nothing is being edited */
@@ -466,7 +466,7 @@ setInterval(function(){if(streamOn&&!document.hidden){stopStream();startStream()
 var CD={end:null,limit:240,run:false};
 function cdDraw(){
  var box=$("cd");box.hidden=!CD.run;if(!CD.run)return;
- if(CD.end==null){box.className="cd idle";$("cdNum").textContent="-:--";$("cdSub").textContent="사냥터에 들어가면 4분을 셉니다";
+ if(CD.end==null){box.className="cd idle";$("cdNum").textContent="-:--";$("cdSub").textContent="사냥터에 들어가면 "+Math.round(CD.limit/60)+"분을 셉니다";
   $("cdBar").style.transform="scaleX(0)";return}
  var left=Math.max(0,(CD.end-Date.now())/1000),sec=Math.ceil(left);
  box.className="cd"+(sec<=30?" low":"");
