@@ -1595,9 +1595,11 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             " (화면 저장함)" if round_ == 2 and _snap_base[0] else ""))
         return r_
 
-    # already out of the stage (town / loading)? There the same menu line quits to the game's main menu.
+    # a try after the first: the one before may have worked after all (town / loading), and there the
+    # same menu line quits to the game's main menu. (Not on the first try: right after the boss the run
+    # information may be missing from the top right too.)
     town = 0
-    for _ in range(3):
+    for _ in range(3 if attempt >= 2 else 0):
         f_, n_ = norm_now()
         if f_ is None:
             break
