@@ -204,8 +204,44 @@ def find_labels(frame, s):
     return out
 
 
+# The game's own name-label colours of items worth picking up (exact palette values: labels are not
+# shaded by the scene). Grey labels are chests (never opened) and plain items; the in-game item filter
+# hides the rest (magic / rare items, items already collected).
+LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0)}
+LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)"}
+GATHER_WAIT = (3.0, 8.0)    # after the boss: at least / at most this long for the items to gather round
+GATHER_MAX = 45.0           # picking up gathered items: at most this long in all
+
+
+def find_item_labels(frame, s, kinds=None):
+    """Coloured item name labels on screen -> [(kind, cx, cy, w)] (screen pixels). The run info in the top
+    right, the minimap there and the bottom bar are left out."""
+    h, w = frame.shape[:2]
+    v = frame.astype(np.int16)
+    out = []
+    for k, (R, G, B) in LABEL_PAL.items():
+        if kinds is not None and k not in kinds:
+            continue
+        m = ((np.abs(v[:, :, 2] - R) <= 12) & (np.abs(v[:, :, 1] - G) <= 12) & (np.abs(v[:, :, 0] - B) <= 12)).astype(np.uint8)
+        m[: int(40 * s), :] = 0
+        m[int(h - 115 * s):, :] = 0
+        m[: int(0.33 * h), int(0.72 * w):] = 0
+        kx, ky = max(3, int(14 * s)) | 1, max(3, int(3 * s)) | 1
+        wide = cv2.dilate(m, np.ones((ky, kx), np.uint8))
+        n, _, st, _ = cv2.connectedComponentsWithStats(wide)
+        for i in range(1, n):
+            x, y, bw, bh, _a = st[i]
+            if not (9 * s <= bh <= 24 * s and 38 * s <= bw <= 260 * s):
+                continue
+            d = float(m[y:y + bh, x:x + bw].mean())
+            if not (0.08 <= d <= 0.6):
+                continue
+            out.append((k, x + bw / 2.0, y + bh / 2.0, float(bw)))
+    return out
+
+
 LOOT_WORDS = ["정수", "열쇠", "부적"]
-FAST_PICK_SEC = 25          # 패스트 모드 extras: seconds after the boss for the jewel / unique markers
+FAST_PICK_SEC = 40          # 패스트 모드 extras: seconds after the boss for the jewel / unique markers
 FAST_PICK_SMITH = 45        # ... and, when something was picked up, for the smith
 SMITHS = ["찰시", "흐라틀리", "할부", "라주크"]      # smiths whose name picture is known (acts 1, 3, 4, 5)
 
@@ -371,6 +407,8 @@ class Picker:
         self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
         self.act_name, self.banner_votes = "", []
         self.fast_pick, self.base_kinds = None, set(self.kinds)
+        self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
+        self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -527,6 +565,8 @@ class Picker:
         if self.fast_pick is not None:
             self.kinds = set(self.base_kinds)
         self.fast_pick = None
+        self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
+        self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -880,6 +920,89 @@ class Picker:
             self._exit_town(now)                       # tidied up at the smith: Esc -> town -> next run
             return
         self._portal_now(frame, s, now, me, portal, mark)
+
+    def _gather_kinds(self):
+        """Label colours to pick up after the boss (since the patch the items gather round the character)."""
+        o = self.opts
+        if not o.get("gather", True):
+            return set()
+        if o.get("fast_mode"):
+            k = set()
+            if o.get("fast_jewel"):
+                k.add("magic")
+            if o.get("fast_unique"):
+                k |= {"unique", "set"}
+            return k if self.fast_pick is not None else set()
+        return {"set", "unique", "magic", "charm"}
+
+    def _gather(self, frame, now):
+        """After the boss the dropped items gather round the character by themselves: wait for that, then
+        click their name labels one by one (nearest first). No minimap, no running around. -> True while busy."""
+        h, w = frame.shape[:2]
+        s = (h - self.top) / 600.0
+        kinds = self._gather_kinds()
+        if self.g_t0 is None:
+            self.g_t0 = now
+            self.release()
+            self.log("보스 처치: 아이템이 캐릭터 주위로 모이기를 기다림")
+        if now - self.g_look < 0.45:
+            return True
+        self.g_look = now
+        f = self.io.grab()
+        if f is None or f.shape != frame.shape:
+            f = frame
+        labs = find_item_labels(f, s, kinds)
+        waited = now - self.g_t0
+        if not self.g_ready:
+            # first wait: the labels must stop moving (same count three looks running) before the first click
+            self.g_stable = self.g_stable + 1 if self.g_seen is not None and len(labs) == self.g_seen else 0
+            self.g_seen = len(labs)
+            if waited < GATHER_WAIT[0] or (self.g_stable < 2 and waited < GATHER_WAIT[1]):
+                return True
+            self.g_ready = True
+            self.log("아이템 이름표 %d개 (%s)" % (len(labs), ", ".join(
+                "%s %d" % (LABEL_KO[k], sum(1 for l in labs if l[0] == k)) for k in LABEL_PAL if any(l[0] == k for l in labs)) or "없음"))
+        g = self.g_goal
+        if g is not None:
+            near = [l for l in labs if l[0] == g[0] and abs(l[1] - g[1]) < 60 * s and abs(l[2] - g[2]) < 14 * s]
+            if not near and now - g[3] > 0.7:
+                self.count += 1
+                self.last_gain = now
+                self.inv_check = None
+                self.log("%s 주움" % LABEL_KO[g[0]])
+                self.g_goal = None
+            elif now - g[3] > 3.5:
+                self.g_goal = None                    # not picked up: try another (counts as a try)
+            else:
+                return True
+        if self.state.get("inv_full", 0) > max(self.state.get("cleaned", 0), self.g_t0):
+            self.g_done, self.g_full = True, True       # bags full: the smith, then back to the labels
+            self.route_played = True
+            self.inv_check, self.need_smith = now, True
+            self.log("인벤토리가 가득 참: 대장장이에서 정리하고 나머지를 주움")
+            return False
+        def key(l):
+            return (l[0], int(l[1] // (40 * s)), int(l[2] // (12 * s)))
+        todo = [l for l in labs if self.g_tries.get(key(l), 0) < 3]
+        if not todo or waited > GATHER_MAX:
+            self.g_empty += 1
+            if self.g_empty < 2 and waited <= GATHER_MAX:
+                return True                            # look once more: labels shift after a pick-up
+            self.g_done = True
+            self.release()
+            self.log("모인 아이템 줍기 끝: %d개%s" % (self.count, " (시간 다 됨)" if waited > GATHER_MAX else ""))
+            self.inv_check, self.need_smith = now, bool(self.count)
+            if not self.count:
+                self.stage_start = None
+            self.ess_done, self.ss_done, self.sweep_done = True, True, True
+            self.route_played = True                   # (normal mode: no route / run-around after this)
+            return False
+        self.g_empty = 0
+        l = min(todo, key=lambda q: (self.g_tries.get(key(q), 0), (q[1] - w / 2.0) ** 2 + (q[2] - h / 2.0) ** 2))
+        self.g_tries[key(l)] = self.g_tries.get(key(l), 0) + 1
+        if self._world_click(l[1], l[2], portal_ok=True):     # a click on the name picks it up
+            self.g_goal = (l[0], l[1], l[2], now)
+        return True
 
     def _fast_kinds(self):
         """패스트 모드 extras switched on: the minimap markers to go for after the boss."""
@@ -1410,8 +1533,8 @@ class Picker:
                 # 확장: walk to the minimap markers of jewels / uniques only, then the smith if anything came in
                 self.fast_pick, self.kinds = now, want
                 self.ess_t0, self.ess_done, self.ss_done, self.sweep_done = now, True, True, True
-                self.log("패스트 모드: 보스 처치 -> 미니맵의 %s 표시만 줍기 (최대 %d초, 없으면 바로 다음 판)"
-                         % ("·".join(KIND_KO[k] for k in ("jewel", "unique") if k in want), FAST_PICK_SEC))
+                self.log("패스트 모드: 보스 처치 -> 모여든 아이템 중 %s만 줍기 (없으면 바로 다음 판)"
+                         % "·".join(("주얼" if k == "jewel" else "유니크·세트") for k in ("jewel", "unique") if k in want))
             if self.fast_pick is None:
                 if self.exit_tries < 6:
                     self._exit_town(now, "패스트 모드: 보스 처치 -> Esc로 마을로 가서 다음 판")
@@ -1420,6 +1543,13 @@ class Picker:
                 self.release()
                 if self.exit_tries < 6:
                     self._exit_town(now, "패스트 모드: 줍기 끝 -> Esc로 마을로 가서 다음 판")
+                return
+        if self.g_done and self.g_full and self.state.get("cleaned", 0) > (self.g_t0 or 0):
+            self.g_done, self.g_full, self.g_empty, self.g_goal = False, False, 0, None    # tidied: on picking up
+            self.npc_since, self.inv_check = None, None
+            self.release()
+        if self.over_since is not None and not self.forced and not self.g_done and self._gather_kinds():
+            if self._gather(frame, now):
                 return
         if self.fast_pick is None and self._route(now):
             return
