@@ -278,6 +278,26 @@ class App(tk.Tk):
         self._say("방향키 녹음을 지움")
         self._rec_label()
 
+    def _set_stage(self, stage):
+        """From the phone: the terror zone stage to repeat. Saved, and if running, used from the next run."""
+        stage = max(0, min(99, stage))
+        self.v_stage.set(str(stage) if stage else "")
+        self.cfg["stage"] = stage
+        save_cfg(self.cfg)
+        if self.engine is not None:
+            try:
+                self.engine.state["target"] = stage
+                self.engine.state["deaths"] = 0
+                self.engine.cfg["always_town"] = stage > 0
+            except Exception:
+                pass
+            if self.picker is not None and getattr(self.picker, "p", None) is not None:
+                self.picker.p.opts["town_stage"] = stage
+                self.picker.p.wp_frontier = False
+        self._say("휴대폰에서 단계 변경: %s" % ("공포 영역 %d단계 반복 (다음 판부터)" % stage if stage
+                                           else "단계 미지정 (목록 맨 위 새 단계)"))
+        self._share()
+
     def _gear_scan(self):
         """Info boxes of all worn / bag / stash items into one ZIP (the smith's window must be open)."""
         if getattr(self, "scanning", False):
@@ -325,7 +345,7 @@ class App(tk.Tk):
     def _share(self):
         self.shared = {"running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
-                       "log": self.logbuf[-60:]}
+                       "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0)}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -336,6 +356,7 @@ class App(tk.Tk):
                                  lambda: self.shared, lambda: self.q.put(("toggle", None)),
                                  lambda: self.q.put(("scan", None)),
                                  io_lock=self.io_lock, title=TITLE)
+            self.remote.set_stage = lambda n: self.q.put(("stage", n))
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -446,6 +467,8 @@ class App(tk.Tk):
                     if p.startswith("포탈 클릭") or p.startswith("마을로 나감"):
                         self.runs += 1
                         self.l_runs.configure(text=str(self.runs))
+                elif kind == "stage":
+                    self._set_stage(int(p or 0))
                 elif kind == "scan":
                     self._gear_scan()
                 elif kind == "restart":
