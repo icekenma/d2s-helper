@@ -358,7 +358,10 @@ def evaluate(crop, s, keep_words=None):
             out["keep_name"], out["kind"] = nm, nm
             break
     if not out.get("keep_name") and color in ("gold", "green") and _keep_pics:
-        nm, v = keep_by_picture(img, lines)
+        try:
+            nm, v = keep_by_picture(img, lines)
+        except Exception:
+            nm, v = None, 0.0
         if nm and v >= KEEP_PIC_NEED:
             out["keep_name"], out["kind"] = nm, nm
     if color in ("gold", "green"):
