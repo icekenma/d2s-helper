@@ -29,7 +29,7 @@ MARKS = {"subtabs2": ("subtabs2.png", 162, 44), "menu_back": ("menu_back.png", 3
          "personal": ("stash_personal.png", 104, 40), "shop": ("shop.png", 100, 66),
          "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70),
          "title_offline": ("title_offline.png", 330, 337), "title_start": ("title_start.png", 330, 296),
-         "title_saves": ("title_saves.png", 330, 337)}
+         "title_saves": ("title_saves.png", 330, 337), "menu_prev": ("menu_prev.png", 355, 440)}
 TITLE_OFFLINE, TITLE_START = (400, 348), (400, 307)      # the game's main menu: '오프라인 플레이', then '시작'
 FORGE_OK = (214, 321)            # the check button under the anvil
 FORGE_MAT_LINE = (150, 91, 340, 110)   # x0, y0, x1, y1 of the material count line
@@ -1547,6 +1547,20 @@ def menu_text(norm):
     return best
 
 
+def submenu_open(norm):
+    """A page under the Esc menu (아이템 필터, 설정, ...) is open: its '이전 메뉴' line. -> score 0..1"""
+    if norm is None or "menu_prev" not in _marks:
+        return 0.0
+    img = _marks["menu_prev"][0]
+    roi = norm[250:590, 250:550]
+    r = (roi.min(axis=2) > 140).astype(np.float32)
+    t = (img.min(axis=2) > 140).astype(np.float32)
+    if r.std() == 0 or t.std() == 0:
+        return 0.0
+    v = cv2.minMaxLoc(cv2.matchTemplate(r, t, cv2.TM_CCOEFF_NORMED))[1]
+    return float(v) if np.isfinite(v) else 0.0
+
+
 def menu_open(norm):
     """The Esc menu is up: its lines, or a pair of red pentagrams beside one of its lines."""
     if norm is None:
@@ -1598,10 +1612,10 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             time.sleep(0.2)
 
     def close_all():
-        """Leave nothing open: Esc while a box or the menu is still showing."""
-        for _ in range(3):
+        """Leave nothing open: Esc while a box, a page under the menu (아이템 필터) or the menu is showing."""
+        for _ in range(4):
             f_, n_ = norm_now()
-            if n_ is None or not (menu_open(n_) or confirm_shown(n_)):
+            if n_ is None or not (menu_open(n_) or confirm_shown(n_) or submenu_open(n_) >= SUBMENU_NEED):
                 return
             open_menu()
             time.sleep(0.6)
@@ -1685,12 +1699,39 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
     use_keys = has_keys and attempt % 2 == 1      # 1, 3, 5: keyboard / 2, 4, 6: mouse
     if not blind and not confirm_shown(n):
         if use_keys:
-            row = lit_row(n)
-            if row is not None:
-                press(["down"] * (4 - row) + ["enter"])          # from the lit line down to the last one
+            # one line at a time, looking after every key: Enter only once the pentagrams stand beside
+            # '저장 후 나가기' (an Enter on another line opens 설정 / 아이템 필터 instead)
+            on_exit = False
+            for _ in range(8):
+                f_, n_ = norm_now()
+                if n_ is None:
+                    break
+                if submenu_open(n_) >= SUBMENU_NEED:
+                    open_menu()                   # a page under the menu: back to the menu
+                    time.sleep(0.6)
+                    continue
+                if exit_menu_shown(n_):
+                    on_exit = True
+                    break
+                if not menu_open(n_):
+                    break
+                press(["down"])
+                time.sleep(0.15)
+            if on_exit:
+                press(["enter"])
+                how = "키보드"
             else:
-                press(["down"] * 4 + ["enter"] if attempt < 3 else ["up", "enter"])   # down 4 / up 1 (wrap)
-            how = "키보드"
+                f_, n_ = norm_now()
+                if n_ is not None and not menu_open(n_):
+                    close_all()
+                    log("Esc 메뉴에서 '저장 후 나가기' 줄을 찾지 못해 이번에는 그만둠 (%d번째)" % attempt)
+                    return False
+                io.move(x, y)                     # the line was never seen lit: click it instead
+                time.sleep(0.35)
+                io.click(x, y)
+                time.sleep(0.3)
+                io.click(x, y)
+                how = "키보드로 줄을 못 찾아 클릭"
         else:
             io.move(x, y)
             time.sleep(0.35)
@@ -1731,6 +1772,7 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
     return False
 
 
+SUBMENU_NEED = 0.7
 CONFIRM_EXIT = (400, 375)                 # "저장 후 나가기" button of the "게임을 저장하고 나갈까요?" box
 
 

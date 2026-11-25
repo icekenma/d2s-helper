@@ -347,6 +347,7 @@ class Picker:
         self.panel_at, self.top, self.forced = 0.0, 0, False
         self.portal_note, self.inv_open_since = 0.0, None
         self.panel_since, self.panel_esc = None, 0.0
+        self.sub_since, self.sub_esc = None, 0.0
         self.wd_at, self.wd_note = 0.0, 0.0
         self.route_played, self.route_note, self.route_end = False, False, None
         self.state["route_done"], self.state["route_len"] = False, 0.0
@@ -1087,6 +1088,24 @@ class Picker:
                 self.state["terror_ever"] = True
         if not self.run_text and now - self.title_at > 1.5 and self._title_screen(frame, now):
             return True
+        norm0 = sorter.Geo(frame).normalize(frame)
+        if sorter.submenu_open(norm0) >= sorter.SUBMENU_NEED:
+            # a page under the Esc menu (아이템 필터, 설정) is open: nothing of ours uses it. Esc twice
+            # (back to the menu, then the menu closes) once it has stayed open for a moment
+            self.release()
+            if self.sub_since is None:
+                self.sub_since = now
+            elif now - self.sub_since > 2.0 and now - self.sub_esc > 2.5:
+                self.sub_esc = now
+                self.log("Esc 메뉴의 아이템 필터·설정 창이 열려 있어 닫음")
+                self.io.key(Key.esc)
+                time.sleep(0.6)
+                f2 = self.io.grab()
+                if f2 is not None and sorter.menu_open(sorter.Geo(f2).normalize(f2)):
+                    self.io.key(Key.esc)
+                self.frame = None
+            return True
+        self.sub_since = None
         if o.get("town_start") and self._wp_menu(frame, s, now):
             if self.over_since is not None:
                 self._new_run()
