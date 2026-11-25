@@ -253,6 +253,10 @@ def ends_with(text, phrase, need=0.8):
     return SequenceMatcher(None, tail, jamo("".join(want))).ratio() >= need
 
 
+# the player's best items: always stashed (never registered by the game's '수집', never sold)
+KEEP_NAMES = {"바람살": 0.72, "신념": 0.78, "명예의 굴레": 0.6, "수수께끼": 0.6}
+
+
 def evaluate(crop, s, keep_words=None):
     """crop: raw BGR image of the info box, s: window scale (pixels per layout unit).
     -> dict: quality, color, kind, keep, charm (decided from word pictures, no OCR needed) and, when
@@ -274,9 +278,14 @@ def evaluate(crop, s, keep_words=None):
     head = [rows(l) for l in lines[:2] if l["color"] == color]        # name line and base line
     word = lambda n: any(spot.has(m, n, 0.68) for m in head)
     is_charm = word("부적")
+    for nm, need in KEEP_NAMES.items():
+        if nm in spot._words and any(spot.score(m, nm) >= need for m in head):
+            out["keep_name"], out["kind"] = nm, nm
+            break
     if color in ("gold", "green"):
         out["charm"] = is_charm
-        out["kind"] = "유니크 부적" if is_charm else out["quality"]
+        if not out.get("keep_name"):
+            out["kind"] = "유니크 부적" if is_charm else out["quality"]
     elif color == "orange":
         out["kind"], out["keep"] = "룬", True
     else:

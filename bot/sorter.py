@@ -883,6 +883,8 @@ def cleanup(io, opts, base_dir, log, stop):
             return "leave"                      # no info box could be read: never sell blind
         if ev.get("forged"):
             return "leave"                      # reinforced by the player (강화): never touched
+        if ev.get("keep_name"):
+            return "keep"                       # one of the best items (바람살, 신념, ...): always to the stash
         if ev["color"] == "yellow" and not ev["keep"] and cell is not None:
             # a rare quiver of arrows / bolts is 1 cell wide and 3 tall: kept even when its base name
             # cannot be read (a rare dagger, scepter or javelin of that size is kept too: no harm done)
@@ -948,9 +950,10 @@ def cleanup(io, opts, base_dir, log, stop):
     stash_kinds = ("essence", "keep", "leave")
 
     # 1) collection tab: register new ones, try a swap when this copy may be better
-    forged_here = any(ev_ and ev_.get("forged") for ev_ in last_ev.values())
+    forged_here = any(ev_ and (ev_.get("forged") or ev_.get("keep_name")) for ev_ in last_ev.values())
     if forged_here:
-        log("강화한 아이템이 인벤토리에 있음: 그대로 둠 (게임의 '수집' 버튼은 쓰지 않고 하나씩만 등록)")
+        log("강화한 아이템이나 꼭 보관할 아이템(바람살·신념·명예의 굴레·수수께끼)이 인벤토리에 있음: "
+            "게임의 '수집' 버튼은 쓰지 않고 하나씩만 등록")
     if not gold_green and not plan.get("register") and not plan.get("swap"):
         pass
     else:

@@ -1023,6 +1023,7 @@ class Picker:
 
         threading.Thread(target=watcher, daemon=True).start()
         held = set()
+        rep_at = [0.0]
         start = time.perf_counter()
         try:
             for t, kind, name in events:
@@ -1055,6 +1056,9 @@ class Picker:
                     left = start + float(t) - time.perf_counter()
                     if left <= 0 or (stop is not None and stop.is_set()):
                         break
+                    if held and time.perf_counter() - rep_at[0] > 0.12:
+                        rep_at[0] = time.perf_counter()
+                        self.io.key_hold()          # (background only: keeps held arrows held)
                     if left > 0.004:
                         time.sleep(min(left - 0.002, 0.01))
                 if stop is not None and stop.is_set():

@@ -96,11 +96,32 @@ def _key_lparam(vk, up):
     return lp
 
 
-def key_down(hwnd, k):
+_woke = {}
+
+
+def wake(hwnd, every=1.0):
+    """Tell the game window it is the active, focused one (without bringing it to the front). A browser-
+    based game ignores keys while it thinks it is in the background; this makes it listen."""
+    now = time.time()
+    if now - _woke.get(hwnd, 0) < every:
+        return
+    _woke[hwnd] = now
+    user32.PostMessageW(hwnd, 0x0086, 1, 0)        # WM_NCACTIVATE (active)
+    user32.PostMessageW(hwnd, 0x0006, 1, 0)        # WM_ACTIVATE  (WA_ACTIVE)
+    user32.PostMessageW(hwnd, 0x0007, 0, 0)        # WM_SETFOCUS
+
+
+def key_down(hwnd, k, repeat=False):
     vk = vk_of(k)
     if vk is None:
         return
-    user32.PostMessageW(hwnd, WM_KEYDOWN, vk, _key_lparam(vk, False))
+    wake(hwnd)
+    lp = _key_lparam(vk, False)
+    if repeat:
+        lp |= 1 << 30                              # "the key was already down" (auto-repeat)
+    user32.PostMessageW(hwnd, WM_KEYDOWN, vk, lp)
+    if repeat:
+        return
     if 0x41 <= vk <= 0x5A:
         user32.PostMessageW(hwnd, WM_CHAR, vk + 32, _key_lparam(vk, False))
 
@@ -113,6 +134,7 @@ def key_up(hwnd, k):
 
 
 def move(hwnd, x, y, held=False):
+    wake(hwnd)
     user32.PostMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON if held else 0, _lparam(x, y))
 
 
@@ -123,6 +145,7 @@ def wheel(hwnd, sx, sy, notches):
 
 
 def button(hwnd, x, y, down):
+    wake(hwnd)
     user32.PostMessageW(hwnd, WM_LBUTTONDOWN if down else WM_LBUTTONUP, MK_LBUTTON if down else 0,
                         _lparam(x, y))
 

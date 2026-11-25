@@ -208,6 +208,13 @@ class GameIO:
             self.kb.press(k)
             self.held_keys.add(("fg", k))
 
+    def key_hold(self):
+        """Keys held in the background: say again that they are down (like the keyboard's own auto-repeat),
+        so a moment of 'focus lost' in the game does not stop the movement."""
+        for way, k in list(self.held_keys):
+            if way == "bg" and self.hwnd:
+                bg.key_down(self.hwnd, k, repeat=True)
+
     def key_up(self, k):
         for way in ("bg", "fg"):
             if (way, k) in self.held_keys:
