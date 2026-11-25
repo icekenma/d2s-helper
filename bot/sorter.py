@@ -215,6 +215,18 @@ def essence_cell(norm, col, row, base_dir):
     return False
 
 
+def burning_cell(norm, col, row):
+    """An essence cell whose crystal is red / orange: 불타는 공포의 정수 (the others are blue, ...)."""
+    x, y = INV_X + CELL * col, INV_Y + CELL * row
+    c = norm[y + 2:y + CELL - 2, x + 2:x + CELL - 2].astype(np.int32)
+    if c.size == 0:
+        return False
+    b, r = c[..., 0], c[..., 2]
+    red = ((r > 160) & (r - b > 70)).mean()
+    blue = ((b > 150) & (b - r > 40)).mean()
+    return red >= 0.07 and blue < 0.04
+
+
 def run_ended(norm, base_dir):
     """How strongly the lower half shows the run-end hint 'ENTER: 다시 하기' (gold lettering). After a
     death in a new stage the hint reads 'ENTER: 공포 영역 N' instead, so 'ENTER:' alone counts too."""
@@ -725,7 +737,7 @@ def _fingerprint(norm, col, row):
 
 _rec_n = [0]
 RUN_INFO = {"stage": 0}                  # set by the program: the stage being repeated (for the essence log)
-ESS_LOG = "essence_log.jsonl"
+ESS_LOG = "burning_log.jsonl"           # 불타는 공포의 정수 only
 
 
 def record_essences(snap, stashed):
@@ -834,12 +846,17 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
 
     ess_cells = set()                           # cells whose picture is an essence (latest look)
 
+    burn_cells = set()                          # essence cells holding 불타는 공포의 정수
+
     def ess_scan(n, inv):
         ess_cells.clear()
+        burn_cells.clear()
         for r_ in range(INV_ROWS):
             for c_ in range(INV_COLS):
                 if inv[r_][c_] and essence_cell(n, c_, r_, base_dir):
                     ess_cells.add((c_, r_))
+                    if burning_cell(n, c_, r_):
+                        burn_cells.add((c_, r_))
 
     shift = {"bottom": (0, 0)}
 
@@ -987,6 +1004,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         if (cell is not None and cell in ess_cells) or (ev and (ev.get("kind") == "정수" or (
                 ev.get("qty") is not None and not ev.get("keep") and ev.get("color") not in ("gold", "green")))):
             q = ev.get("qty") if ev else None
+            if q is None and ev and cell is not None and cell in ess_cells:
+                q = ev.get("qty_raw")
             return "essence" if q is not None and q >= ESSENCE_HOLD else "hold"
         if not ev:
             return "leave"                      # no info box could be read: never sell blind
@@ -1046,27 +1065,43 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     n0 = norm_now()
     inv0 = read_inventory(n0) if n0 is not None else None
     if inv0 is not None and not any(v for row in inv0 for v in row):
+        if probe:
+            record_essences({}, set())            # no 불타는 정수 in the bags this run
         return "자동 정리: 인벤토리가 비어 있어 할 일 없음", True
     # look at every item once first, so that only the steps that are needed get done
     plan = {}
 
-    ess_snap, ess_out = {}, set()
+    ess_snap, ess_out, ess_bad = {}, set(), []
 
     def survey(cell, ev, d):
         plan[d] = plan.get(d, 0) + 1
-        if d in ("hold", "essence") and ev and ev.get("qty") is not None:
-            key = (ev.get("name") or ev.get("raw") or "").strip() or "칸 %d,%d" % (cell[0] + 1, cell[1] + 1)
-            ess_snap[key] = ess_snap.get(key, 0) + int(ev["qty"])
-            if d == "essence":
-                ess_out.add(key)
+        if d not in ("hold", "essence"):
+            return
+        nm = (ev.get("name") or ev.get("raw") or "") if ev else ""
+        burning = cell in burn_cells or "불타" in nm.replace(" ", "")
+        if not burning:
+            return                              # only 불타는 공포의 정수 is counted
+        key = "불타는 정수 %d,%d" % (cell[0] + 1, cell[1] + 1)
+        q = (ev.get("qty") if ev.get("qty") is not None else ev.get("qty_raw")) if ev else None
+        if q is None:
+            ess_bad.append(key)
+            return
+        ess_snap[key] = int(q)
+        if d == "essence":
+            ess_out.add(key)
 
     walk(survey)
     if stop.is_set():
         return "자동 정리 중단", False
     if probe and plan.get("leave") and not io.front():
         return NEED_FRONT, False                # info boxes missing: the game is behind other windows
-    if ess_snap:
+    if ess_bad:
+        log("불타는 정수 묶음 %d개의 수량을 읽지 못함: 이번 판 정수 개수는 세지 않음" % len(ess_bad))
+    else:
         record_essences(ess_snap, ess_out)
+    if ess_snap and not ess_bad:
+        log("불타는 정수: 인벤토리에 %d개 (%s)" % (sum(ess_snap.values()),
+                                           ", ".join("%s칸 %d개" % (k.split()[-1], v) for k, v in ess_snap.items())))
     if plan.get("hold"):
         log("정수 %d묶음은 인벤토리에 그대로 둠 (%d개 이상인 묶음만 보관함으로, 정수는 절대 판매 안 함)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)

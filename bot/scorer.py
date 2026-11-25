@@ -403,8 +403,10 @@ def evaluate(crop, s, keep_words=None):
             out["kind"], out["keep"] = "레어 화살", True
     if len(lines) > 1:                         # '수량: N' right under the name (essences stack in one cell);
         l = lines[1]                           # the line after it is the sale price, never the count
-        if l.get("label") and l["numbers"] and l["color"] == "white":
-            out["qty"] = l["numbers"][0]
+        if l["numbers"] and l["color"] == "white":
+            out["qty_raw"] = l["numbers"][0]  # the count when the cell is known to hold an essence
+            if l.get("label"):
+                out["qty"] = l["numbers"][0]
     if status()[0]:
         def text(l):
             return ocr_line(img[max(0, l["y0"] - 3):l["y1"] + 3, max(0, l["box"][0] - 4):l["box"][1] + 4])

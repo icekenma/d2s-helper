@@ -287,7 +287,7 @@ summary::-webkit-details-marker{display:none}
  <button type="button" role="tab" id="v-runs" aria-selected="false">판 기록</button>
  <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
 </div></div>
-<section class="items runs" id="runsView" hidden>
+<section class="items rlog" id="runsView" hidden>
  <div class="rnow" id="rNow" hidden></div>
  <div class="rsum" id="rSum"></div>
  <div class="rtab" role="table" aria-label="판 기록">
@@ -533,10 +533,10 @@ function loadEssStat(){
 function fmtN(v,d){return v==null?"–":(Math.round(v*Math.pow(10,d||0))/Math.pow(10,d||0)).toString()}
 function drawEssStat(d){
  var el=$("essStat");
- if(!d||!d.runs){el.innerHTML='<div class="etop"><div><b>정수 통계</b><small>판마다 대장장이에서 정수 수량을 읽어 늘어난 만큼 셉니다.</small></div></div><div class="none">아직 기록이 없습니다. 두 판 이상 돌면 판당·시간당 정수가 여기에 나옵니다.</div>';el.hidden=false;return}
+ if(!d||!d.runs){el.innerHTML='<div class="etop"><div><b>불타는 정수 통계</b><small>판마다 대장장이에서 불타는 공포의 정수 수량을 읽어 늘어난 만큼 셉니다.</small></div></div><div class="none">아직 기록이 없습니다. 두 판 이상 돌면 판당·시간당 정수가 여기에 나옵니다.</div>';el.hidden=false;return}
  var t=d.today||{},rec=(d.recent||[]).slice().reverse(),mx=Math.max.apply(null,rec.map(function(x){return x.gained}).concat([1]));
  var stg=(d.stages||[]),best=stg.length&&stg[0].per_hour?stg[0].stage:null,smx=Math.max.apply(null,stg.map(function(x){return x.per_hour||0}).concat([1]));
- el.innerHTML='<div class="etop"><div><b>정수 통계</b><small>최근 3일 · '+d.runs+'판</small></div><div class="big">'+fmtN(d.per_hour,1)+'<small>시간당 개수</small></div></div>'+
+ el.innerHTML='<div class="etop"><div><b>불타는 정수 통계</b><small>최근 3일 · '+d.runs+'판</small></div><div class="big">'+fmtN(d.per_hour,1)+'<small>시간당 개수</small></div></div>'+
   '<div class="kv"><div><span>오늘 얻음</span><b>'+(t.gained||0)+'개</b></div><div><span>판당</span><b>'+fmtN(d.per_run,2)+'개</b></div><div><span>판당 시간</span><b>'+(d.min_per_run!=null?fmtN(d.min_per_run,1)+"분":"–")+'</b></div></div>'+
   (rec.length?'<div class="spark" aria-label="최근 판별 얻은 정수">'+rec.map(function(x){return '<i class="'+(x.gained?"":"z")+'" style="height:'+(x.gained?Math.max(8,100*x.gained/mx):6)+'%" title="'+x.gained+'개"></i>'}).join("")+'</div><div class="cap"><span>'+rec.length+'판 전</span><span>최근 판</span></div>':"")+
   (stg.length?'<h4>단계별 (시간당 많은 순)</h4><div class="stg">'+stg.map(function(x){
@@ -643,7 +643,7 @@ function drawRuns(){
  if(cur){var el=now-(cur._skew||0)-cur.start;$("rNow").innerHTML='<i class="dotl"></i><div><b>'+cur.n+'판 진행 중</b><span>공포 '+(cur.stage||"-")+'단계 · '+hm(cur.start)+' 시작</span></div><span class="clk">'+mss(el)+"</span>";$("rNow").hidden=false}
  else $("rNow").hidden=true;
  $("rSum").innerHTML='<div><span>오늘 판</span><b>'+td.length+'</b></div><div><span>판당 평균</span><b>'+(done.length?mss(done.reduce(function(a,r){return a+r.secs},0)/done.length):"–")+
-  '</b></div><div><span>보관·등록</span><b>'+itemsN+'개</b></div><div><span>오늘 정수</span><b class="g">'+(ess.length?essN+"개":"–")+
+  '</b></div><div><span>보관·등록</span><b>'+itemsN+'개</b></div><div><span>오늘 불타는 정수</span><b class="g">'+(ess.length?essN+"개":"–")+
   '</b></div><div><span>정수 / 시간</span><b class="g">'+(secs>60?(Math.round(timed.reduce(function(a,r){return a+r.ess},0)*36000/secs)/10):"–")+
   '</b></div><div><span>정수 / 판</span><b class="g">'+(ess.length?Math.round(essN*100/ess.length)/100:"–")+"</b></div>";
  if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 한 줄씩 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}

@@ -146,8 +146,16 @@ def read(crop, s):
                         label = True
                         txt += ":"
                         continue
+                if gw <= 8 and gh >= 14:      # a plain upright bar: the font's "1" without foot (수량: 1)
+                    col = mask[y0:y1, x0:x1]
+                    rows = np.where(col.sum(axis=1) > 0)[0]
+                    if len(rows) and (col[rows[0]:rows[-1] + 1].sum(axis=1) > 0).mean() > 0.9:
+                        txt += "1"
+                        continue
                 lab, sc = classify(gi)
                 txt += lab if sc >= 0.70 else "?"
+            if ":" in txt:                  # "수량:1" read as one word (a narrow space after the colon)
+                txt = txt.split(":")[-1]
             core = txt.strip(".").rstrip("%")
             if "?" in txt and len(txt) >= 2 and core.replace("?", "").isdigit() and core.replace("?", ""):
                 unsure = True

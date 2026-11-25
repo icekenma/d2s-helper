@@ -50,10 +50,11 @@ def _lines(name):
 
 def _essence_rows():
     """(t, gained) per tidy-up, from the stack counts (see sorter.record_essences)."""
-    base, rows = {}, []
-    for r in _lines("essence_log.jsonl"):
+    base, rows = None, []
+    from . import sorter
+    for r in _lines(sorter.ESS_LOG):
         stacks = r.get("stacks") or {}
-        if base:
+        if base is not None:
             g = sum(max(0, q - base.get(k, 0)) for k, q in stacks.items())
             rows.append((r["t"], g))
         base = {k: (0 if k in (r.get("stashed") or []) else q) for k, q in stacks.items()}

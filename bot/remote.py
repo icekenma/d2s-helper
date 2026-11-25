@@ -68,17 +68,11 @@ def essence_stats(days=3):
                 except ValueError:
                     pass
     since = time.time() - days * 86400
-    base, prev_t, runs = {}, None, []
+    base, prev_t, runs = None, None, []
     for r in rows:
         stacks = r.get("stacks") or {}
-        gained = 0
-        for k, q in stacks.items():
-            if k in base:
-                gained += max(0, q - base[k])
-        new_keys = [k for k in stacks if k not in base]
-        if base:                                # a stack seen for the first time came in this run
-            gained += sum(stacks[k] for k in new_keys)
-        first = not base
+        first = base is None
+        gained = 0 if first else sum(max(0, q - base.get(k, 0)) for k, q in stacks.items())
         base = {k: (0 if k in (r.get("stashed") or []) else q) for k, q in stacks.items()}
         dt = (r["t"] - prev_t) if prev_t else None
         prev_t = r["t"]
