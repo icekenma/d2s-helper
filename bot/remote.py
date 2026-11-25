@@ -350,6 +350,10 @@ class Remote:
                     if cb:
                         cb(star)
                     return self._send(200, json.dumps({"star": star}).encode("utf-8"), "application/json")
+                if u.path == "/api/runs" and method == "GET":
+                    from . import runlog
+                    body = json.dumps({"runs": runlog.build(150), "now": time.time()}, ensure_ascii=False)
+                    return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/essences" and method == "GET":
                     body = json.dumps(essence_stats(), ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")

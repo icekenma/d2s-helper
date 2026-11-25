@@ -23,9 +23,9 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 
 /* header: view switch */
 .bar{position:sticky;top:0;z-index:5;padding:8px 14px 10px;background:linear-gradient(var(--abyss) 70%,transparent)}
-.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 1fr;padding:4px;border-radius:999px;
+.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:.8fr 1.15fr 1fr 1.05fr;padding:4px;border-radius:999px;
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
-.views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:15px;padding:9px 0;border-radius:999px}
+.views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:14.5px;padding:9px 0;border-radius:999px;white-space:nowrap}
 .views button[aria-selected=true]{color:var(--abyss);background:linear-gradient(var(--gold2),var(--gold));
  box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 2px 10px rgba(210,163,74,.25)}
 
@@ -161,6 +161,41 @@ summary::-webkit-details-marker{display:none}
 .est .stg .best{color:var(--gold2);font-weight:700}
 .est .stg em{font-style:normal;color:var(--ash);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
 .est .none{font-size:13px;color:var(--ash);margin-top:8px;line-height:1.5}
+/* run table: one row per run, tap to open the items of that run */
+.rnow{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r);background:linear-gradient(160deg,#2c2316,var(--iron));
+ box-shadow:inset 0 0 0 1px rgba(210,163,74,.5)}
+.rnow .dotl{width:9px;height:9px;border-radius:50%;background:var(--gold2);box-shadow:0 0 0 4px rgba(210,163,74,.18);flex:none}
+.rnow div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rnow b{font-size:15px}
+.rnow span{font-size:12.5px;color:var(--ash)}
+.rnow .clk{margin-left:auto;font-size:26px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums}
+.rsum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.rsum div{padding:10px 11px;border-radius:12px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.rsum span{display:block;font-size:11.5px;color:var(--ash)}
+.rsum b{font-size:18px;font-variant-numeric:tabular-nums}
+.rsum b.g{color:var(--gold2)}
+.rtab{border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge);overflow:hidden}
+.rh,.rr{display:grid;grid-template-columns:34px minmax(0,1.5fr) 50px 40px minmax(0,1fr);gap:8px;align-items:center;padding:0 12px}
+.rh{padding-top:10px;padding-bottom:8px;font-size:11.5px;color:var(--ash);border-bottom:1px solid var(--edge)}
+.rh span:nth-child(3),.rh span:nth-child(4),.rr .c3,.rr .c4{text-align:right}
+.rr{width:100%;border:0;background:none;color:var(--bone);text-align:left;font:inherit;font-size:13.5px;min-height:46px;
+ border-bottom:1px solid rgba(255,255,255,.04);font-variant-numeric:tabular-nums}
+.rr:nth-child(even){background:rgba(255,255,255,.018)}
+.rr .c1{font-weight:700;color:var(--ash)}
+.rr .c2 small{display:block;font-size:11px;color:var(--ash)}
+.rr .c4{font-weight:800;color:var(--gold2)}
+.rr .c4.z{color:var(--dim);font-weight:600}
+.rr .c5{font-size:12.5px;color:var(--ash);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr .c5 b{color:var(--bone);font-weight:700;margin-right:4px}
+.rr.live{background:linear-gradient(90deg,rgba(210,163,74,.12),transparent 70%);box-shadow:inset 3px 0 0 var(--gold)}
+.rr.live .c1{color:var(--gold2)}
+.rr[aria-expanded=true]{background:var(--iron2)}
+.rdet{padding:6px 14px 12px 54px;background:var(--iron2);border-bottom:1px solid var(--edge);font-size:13px}
+.rdet p{margin:4px 0;display:flex;gap:8px}
+.rdet time{color:var(--ash);font-variant-numeric:tabular-nums;flex:none}
+.rdet em{font-style:normal;color:var(--ash);margin-left:auto;white-space:nowrap}
+.rdet .why{color:var(--ash);font-size:12px;margin-top:6px}
+.rempty{padding:22px 16px;color:var(--ash);font-size:13.5px;line-height:1.55}
 .ess{padding:14px 16px;border-radius:var(--r);background:linear-gradient(160deg,var(--iron2),var(--iron));
  box-shadow:inset 0 0 0 1px var(--edge)}
 .ess .hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -249,8 +284,17 @@ summary::-webkit-details-marker{display:none}
 <div class="bar"><div class="views" role="tablist">
  <button type="button" role="tab" id="v-ctl" aria-selected="true">조작</button>
  <button type="button" role="tab" id="v-items" aria-selected="false">모은 아이템</button>
+ <button type="button" role="tab" id="v-runs" aria-selected="false">판 기록</button>
  <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
 </div></div>
+<section class="items runs" id="runsView" hidden>
+ <div class="rnow" id="rNow" hidden></div>
+ <div class="rsum" id="rSum"></div>
+ <div class="rtab" role="table" aria-label="판 기록">
+  <div class="rh" role="row"><span>판</span><span>시작 → 종료</span><span>시간</span><span>정수</span><span>아이템</span></div>
+  <div id="rRows"></div>
+ </div>
+</section>
 <section class="items keep" id="keepView" hidden>
  <div class="kp" id="kpNote"></div>
  <div class="kmin">
@@ -579,21 +623,62 @@ function drawKeep(){
  });
  $("kList").innerHTML=html;
 }
+/* ---- run table ---- */
+var runs=[],openRun=null,runsT=null;
+function two(n){return (n<10?"0":"")+n}
+function hms(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds())}
+function hm(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())}
+function mss(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+":"+two(s%60)}
+function loadRuns(){
+ fetch("/api/runs").then(function(r){return r.json()}).then(function(d){runs=d.runs||[];var skew=Date.now()/1000-(d.now||Date.now()/1000);
+  runs.forEach(function(r){r._skew=skew});drawRuns()}).catch(function(){});
+}
+function drawRuns(){
+ var now=Date.now()/1000,cur=runs.length&&runs[0].live?runs[0]:null;
+ var t0=new Date();t0.setHours(0,0,0,0);t0=t0.getTime()/1000;
+ var td=runs.filter(function(r){return r.start>=t0}),done=td.filter(function(r){return !r.live});
+ var ess=td.filter(function(r){return r.ess!=null}),essN=ess.reduce(function(a,r){return a+r.ess},0);
+ var timed=done.filter(function(r){return r.ess!=null}),secs=timed.reduce(function(a,r){return a+r.secs},0);
+ var itemsN=td.reduce(function(a,r){return a+r.items.length},0);
+ if(cur){var el=now-(cur._skew||0)-cur.start;$("rNow").innerHTML='<i class="dotl"></i><div><b>'+cur.n+'판 진행 중</b><span>공포 '+(cur.stage||"-")+'단계 · '+hm(cur.start)+' 시작</span></div><span class="clk">'+mss(el)+"</span>";$("rNow").hidden=false}
+ else $("rNow").hidden=true;
+ $("rSum").innerHTML='<div><span>오늘 판</span><b>'+td.length+'</b></div><div><span>판당 평균</span><b>'+(done.length?mss(done.reduce(function(a,r){return a+r.secs},0)/done.length):"–")+
+  '</b></div><div><span>보관·등록</span><b>'+itemsN+'개</b></div><div><span>오늘 정수</span><b class="g">'+(ess.length?essN+"개":"–")+
+  '</b></div><div><span>정수 / 시간</span><b class="g">'+(secs>60?(Math.round(timed.reduce(function(a,r){return a+r.ess},0)*36000/secs)/10):"–")+
+  '</b></div><div><span>정수 / 판</span><b class="g">'+(ess.length?Math.round(essN*100/ess.length)/100:"–")+"</b></div>";
+ if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 한 줄씩 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}
+ $("rRows").innerHTML=runs.map(function(r){
+  var dur=r.live?now-(r._skew||0)-r.start:r.secs,names=r.items.map(function(x){return x.name});
+  var row='<button type="button" class="rr'+(r.live?" live":"")+'" data-n="'+r.n+'" aria-expanded="'+(openRun===r.n)+'"><span class="c1">'+r.n+
+   '</span><span class="c2">'+hm(r.start)+" → "+(r.live?"진행 중":hm(r.end))+'<small>공포 '+(r.stage||"-")+'단계</small></span><span class="c3">'+mss(dur)+
+   '</span><span class="c4'+(r.ess?"":" z")+'">'+(r.ess==null?"–":r.ess)+'</span><span class="c5">'+(names.length?"<b>"+names.length+"</b>"+esc(names.join(", ")):"")+"</span></button>";
+  if(openRun===r.n){
+   row+='<div class="rdet">'+(r.items.length?r.items.map(function(x){return "<p><time>"+hms(x.t)+"</time><span>"+esc(x.name)+"</span><em>"+esc(x.action+(x.tab?" · "+x.tab+" 탭":""))+"</em></p>"}).join(""):
+    '<p><span style="color:var(--ash)">보관·등록한 아이템 없음 (판매한 아이템은 기록하지 않음)</span></p>')+
+    '<div class="why">'+hms(r.start)+" ~ "+(r.live?"진행 중":hms(r.end))+(r.why?" · "+esc(r.why):"")+"</div></div>";
+  }
+  return row}).join("");
+ Array.prototype.forEach.call(document.querySelectorAll(".rr"),function(b){b.onclick=function(){var n=+b.dataset.n;openRun=openRun===n?null:n;drawRuns()}});
+}
 function show(v){
- var it=v==="items",kp=v==="keep",ctl=!it&&!kp;
- $("itemsView").hidden=!it;$("keepView").hidden=!kp;$("ctlView").hidden=!ctl;
- $("v-items").setAttribute("aria-selected",String(it));$("v-keep").setAttribute("aria-selected",String(kp));$("v-ctl").setAttribute("aria-selected",String(ctl));
- if(!ctl){stopStream();if(it)loadItems();else loadKeep()}else if(!stillT){startStream()}
- history.replaceState(null,"",it?"#items":kp?"#keep":"#");
+ var it=v==="items",kp=v==="keep",rn=v==="runs",ctl=!it&&!kp&&!rn;
+ $("itemsView").hidden=!it;$("keepView").hidden=!kp;$("runsView").hidden=!rn;$("ctlView").hidden=!ctl;
+ $("v-items").setAttribute("aria-selected",String(it));$("v-keep").setAttribute("aria-selected",String(kp));
+ $("v-runs").setAttribute("aria-selected",String(rn));$("v-ctl").setAttribute("aria-selected",String(ctl));
+ clearInterval(runsT);runsT=null;
+ if(!ctl){stopStream();if(it)loadItems();else if(kp)loadKeep();else{loadRuns();
+  runsT=setInterval(function(){if(document.hidden)return;var k=(runsT.k=(runsT.k||0)+1);if(k%3===0)loadRuns();else drawRuns()},1000)}}
+ else if(!stillT){startStream()}
+ history.replaceState(null,"",it?"#items":kp?"#keep":rn?"#runs":"#");
 }
 $("clearItems").onclick=function(){
  if(!items.length)return;
  if(!confirm("모은 아이템 목록 "+items.length+"개를 비울까요?\n(기록은 PC의 collected 폴더 안 old_ 폴더로 옮겨 둡니다)"))return;
  fetch("/api/items/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){items=[];cat="all";drawItems()}).catch(function(){});
 };
-$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};
+$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};$("v-runs").onclick=function(){show("runs")};
 setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);
-if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");
+if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");else if(location.hash==="#runs")show("runs");
 
 document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!stillT&&!$("ctlView").hidden)startStream()}});
 </script></body></html>
