@@ -1316,11 +1316,11 @@ class Picker:
                 return
         if self.opts.get("fast_mode") and self.over_since is not None and not self.forced:
             # 패스트 모드: the essences come into the bags by themselves when the boss dies. Pick up
-            # nothing, no route, no smith: count the burning essences, then Esc -> town -> next run.
+            # nothing, no route, no smith, no inventory: Esc -> town -> next run.
             self.release()
             if now - self.over_since < 2.0:
                 return
-            if not self.fast_counted:
+            if not self.fast_counted and self.opts.get("fast_count"):
                 self.fast_counted = True
                 self._fast_count()
                 self.frame = None
