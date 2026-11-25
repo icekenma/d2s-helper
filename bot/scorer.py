@@ -51,6 +51,7 @@ def _plain_dirs():
 
 
 def load(base, tess_path=""):
+    load_keep(base)
     with open(os.path.join(base, "assets", "items_kr.json"), "r", encoding="utf-8") as f:
         _db[:] = json.load(f)
     for it in _db:
@@ -259,6 +260,76 @@ QTY_FIX = str.maketrans({"I": "1", "l": "1", "|": "1", "ㅣ": "1", "!": "1", "O"
 
 # the player's best items: always stashed (never registered by the game's '수집', never sold)
 KEEP_NAMES = {"바람살": 0.72, "신념": 0.78, "명예의 굴레": 0.6, "수수께끼": 0.6}
+KEEP_LIST = {"order": [], "classes": {}}     # assets/keep_list.json: what to keep, per character class
+KEEP_SET = set()                             # every name in it
+_keep_pics = []                              # (name, float32 picture of the name line, layout scale)
+KEEP_PIC_NEED = 0.76
+
+
+def load_keep(base):
+    KEEP_SET.clear()
+    _keep_pics[:] = []
+    try:
+        with open(os.path.join(base, "assets", "keep_list.json"), "r", encoding="utf-8") as f:
+            KEEP_LIST.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    for items in KEEP_LIST.get("classes", {}).values():
+        for it in items:
+            KEEP_SET.add(it["n"])
+    KEEP_SET.update(KEEP_NAMES)
+    try:
+        with open(os.path.join(base, "assets", "keep_names.json"), "r", encoding="utf-8") as f:
+            for name, rows in json.load(f):
+                _keep_pics.append((name, np.array([[int(c) for c in r] for r in rows], np.float32) / 9.0))
+    except (OSError, ValueError):
+        pass
+
+
+def keep_pictures():
+    """Names that can be told from their picture alone (no OCR needed)."""
+    return {n for n, _ in _keep_pics} | set(KEEP_NAMES)
+
+
+def _line_pic(img, l):
+    """A text line as a soft picture at layout scale (the same at any window size)."""
+    c = img[max(0, l["y0"] - 3):l["y1"] + 3, max(0, l["box"][0] - 4):l["box"][1] + 4].astype(np.float32)
+    g = np.clip((c.max(axis=2) - 60.0) / 140.0, 0, 1)
+    g = cv2.resize(g, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+    return cv2.GaussianBlur(g, (0, 0), 0.6)
+
+
+def keep_by_picture(img, lines):
+    """-> (name, score): the keep-list name whose picture best matches the name (or base) line."""
+    best = (None, 0.0)
+    for l in lines[:2]:
+        if l["color"] not in ("gold", "green"):
+            continue
+        q = _line_pic(img, l)
+        for n, t in _keep_pics:
+            if abs(t.shape[1] - q.shape[1]) > 8:
+                continue
+            r = q
+            if r.shape[0] < t.shape[0] or r.shape[1] < t.shape[1]:
+                r = cv2.copyMakeBorder(r, 0, max(0, t.shape[0] - r.shape[0] + 1), 0,
+                                       max(0, t.shape[1] - r.shape[1] + 1), cv2.BORDER_CONSTANT, value=0)
+            v = cv2.minMaxLoc(cv2.matchTemplate(r, t, cv2.TM_CCOEFF_NORMED))[1]
+            if np.isfinite(v) and v > best[1]:
+                best = (n, float(v))
+    return best
+
+
+def keep_by_text(text):
+    """An OCR'd name -> the keep-list name it reads as, or None."""
+    j = jamo(text.replace(" ", ""))
+    if not j:
+        return None
+    best, hit = 0.0, None
+    for n in KEEP_SET:
+        v = SequenceMatcher(None, j, jamo(n.replace(" ", ""))).ratio()
+        if v > best:
+            best, hit = v, n
+    return hit if best >= 0.86 else None
 
 
 def evaluate(crop, s, keep_words=None):
@@ -286,6 +357,10 @@ def evaluate(crop, s, keep_words=None):
         if nm in spot._words and any(spot.score(m, nm) >= need for m in head):
             out["keep_name"], out["kind"] = nm, nm
             break
+    if not out.get("keep_name") and color in ("gold", "green") and _keep_pics:
+        nm, v = keep_by_picture(img, lines)
+        if nm and v >= KEEP_PIC_NEED:
+            out["keep_name"], out["kind"] = nm, nm
     if color in ("gold", "green"):
         out["charm"] = is_charm
         if not out.get("keep_name"):
@@ -317,6 +392,10 @@ def evaluate(crop, s, keep_words=None):
 
         name = text(lines[0])
         out["raw"] = name
+        if color in ("gold", "green") and not out.get("keep_name"):
+            nm = keep_by_text(name)
+            if nm:
+                out["keep_name"], out["kind"] = nm, nm
         if color not in ("gold", "green"):
             if not out["keep"] and (ends_with(name, "룬") or ends_with(name, "정수") or has_word(name, "열쇠")
                                      or has_word(name, "주얼")):
@@ -342,6 +421,8 @@ def evaluate(crop, s, keep_words=None):
             out["note"] = "이름을 목록에서 찾지 못함"
             return out
         out["name"] = item["n"]
+        if item["n"] in KEEP_SET and not out.get("keep_name"):
+            out["keep_name"], out["kind"] = item["n"], item["n"]
         out["top"] = bool(item.get("top"))
         out["charm"] = out["charm"] or bool(item.get("charm"))
         nums = [n for l in lines[1:] if l["color"] in ("blue", "red") and not l.get("label") for n in l["numbers"]]

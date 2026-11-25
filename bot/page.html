@@ -23,7 +23,7 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 
 /* header: view switch */
 .bar{position:sticky;top:0;z-index:5;padding:8px 14px 10px;background:linear-gradient(var(--abyss) 70%,transparent)}
-.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:999px;
+.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 1fr;padding:4px;border-radius:999px;
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 .views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:15px;padding:9px 0;border-radius:999px}
 .views button[aria-selected=true]{color:var(--abyss);background:linear-gradient(var(--gold2),var(--gold));
@@ -158,6 +158,26 @@ summary::-webkit-details-marker{display:none}
 .zoom img{max-width:100%;max-height:80vh;border-radius:8px;box-shadow:0 0 0 1px var(--edge2)}
 .zoom p{margin:12px 0 0;text-align:center;color:var(--ash);font-size:13px}
 
+
+/* keep list: what goes to the stash, per class */
+.kp{padding:14px 16px;border-radius:var(--r);background:linear-gradient(160deg,var(--iron2),var(--iron));box-shadow:inset 0 0 0 1px var(--edge);
+ font-size:13.5px;color:var(--ash);line-height:1.55}
+.kp b{display:block;color:var(--bone);font-size:15px;margin-bottom:4px}
+.kp .ocr{display:flex;gap:8px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid var(--edge)}
+.kp .ocr i{flex:none;width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--life)}
+.kp .ocr.off i{background:var(--blood2)}
+#kList{display:grid;gap:6px}
+.kg{margin:12px 4px 2px;font-size:13px;color:var(--ash);display:flex;justify-content:space-between}
+.kg b{color:var(--bone);font-size:14px}
+.ki{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:11px 14px;border-radius:12px;
+ background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.ki .nm{font-weight:700;font-size:15px}
+.ki .nm.t-u{color:#c9a86c}.ki .nm.t-s{color:#5fd05f}.ki .nm.t-r{color:var(--gold2)}
+.ki .sb{grid-column:1;font-size:12.5px;color:var(--ash)}
+.ki .how{grid-row:1/span 2;grid-column:2;font-size:11.5px;color:var(--ash);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.ki .how::before{content:"";width:7px;height:7px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--dim)}
+.ki .how.pic{color:var(--gold)}
+.ki .how.pic::before{background:var(--gold);box-shadow:none}
 @media (max-width:370px){.pad{width:160px;height:160px}.deck{gap:12px}}
 @media (orientation:landscape) and (min-width:700px){
  .bar{position:static}
@@ -173,7 +193,13 @@ summary::-webkit-details-marker{display:none}
 <div class="bar"><div class="views" role="tablist">
  <button type="button" role="tab" id="v-ctl" aria-selected="true">조작</button>
  <button type="button" role="tab" id="v-items" aria-selected="false">모은 아이템</button>
+ <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
 </div></div>
+<section class="items keep" id="keepView" hidden>
+ <div class="kp" id="kpNote"></div>
+ <div class="chips" id="kChips"></div>
+ <div id="kList"></div>
+</section>
 <section class="items" id="itemsView" hidden>
  <div class="ess" id="essSum" hidden></div>
  <div class="chips" id="chips"></div>
@@ -407,20 +433,47 @@ function row(x){
 function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML}
 function zoom(img,cap){if(!img)return;var z=document.createElement("div");z.className="zoom";
  z.innerHTML='<div><img src="/items/'+img+'" alt=""><p>'+cap+"</p></div>";z.onclick=function(){z.remove()};document.body.appendChild(z)}
+
+/* ---- keep list: per class, every item here goes to the stash (never sold, never registered) ---- */
+var keep=null,kcls="";
+var TYPE_CLS={"유니크":"t-u","세트":"t-s","룬워드":"t-r"};
+function loadKeep(){
+ fetch("/api/keeplist").then(function(r){return r.json()}).then(function(d){keep=d;if(!kcls)kcls=(d.order||[])[0]||"";drawKeep()}).catch(function(){});
+}
+function drawKeep(){
+ if(!keep)return;
+ var pics={};(keep.pics||[]).forEach(function(n){pics[n]=1});
+ var all={};Object.keys(keep.classes).forEach(function(c){keep.classes[c].forEach(function(x){all[x.n]=1})});
+ var npic=Object.keys(all).filter(function(n){return pics[n]}).length,ntot=Object.keys(all).length;
+ $("kpNote").innerHTML="<b>주우면 보관함으로 가는 아이템</b>여기 있는 아이템은 팔지도, 수집품에 등록하지도 않고 대장장이에서 보관함에 넣습니다. 모든 직업의 목록이 함께 적용됩니다."+
+  '<div class="ocr'+(keep.ocr?"":" off")+'"><i></i><span>'+(keep.ocr?"글자 인식이 켜져 있어 목록의 "+ntot+"개를 모두 이름으로 알아봅니다.":
+  "글자 인식(Tesseract)이 꺼져 있어 <b style=\"display:inline;color:var(--gold2)\">금색 점</b>이 있는 "+npic+"개만 그림으로 알아봅니다. 나머지 "+(ntot-npic)+"개는 Tesseract를 설치하면 알아봅니다.")+"</span></div>";
+ $("kChips").innerHTML=(keep.order||[]).map(function(c){return '<button type="button" data-c="'+esc(c)+'" aria-pressed="'+(c===kcls)+'">'+esc(c)+"<b>"+(keep.classes[c]||[]).length+"</b></button>"}).join("");
+ Array.prototype.forEach.call($("kChips").children,function(b){b.onclick=function(){kcls=b.dataset.c;drawKeep()}});
+ var list=keep.classes[kcls]||[],html="";
+ ["룬워드","유니크","세트"].forEach(function(t){
+  var g=list.filter(function(x){return x.t===t});if(!g.length)return;
+  html+='<div class="kg"><b>'+t+"</b><span>"+g.length+"개</span></div>"+g.map(function(x){
+   return '<div class="ki"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'</span><span class="sb">'+esc(x.b+" · "+x.why)+
+    '</span><span class="how'+(pics[x.n]?" pic":"")+'">'+(pics[x.n]?"그림":"글자")+"</span></div>"}).join("");
+ });
+ $("kList").innerHTML=html;
+}
 function show(v){
- var it=v==="items";$("itemsView").hidden=!it;$("ctlView").hidden=it;
- $("v-items").setAttribute("aria-selected",String(it));$("v-ctl").setAttribute("aria-selected",String(!it));
- if(it){stopStream();loadItems()}else if(!stillT){startStream()}
- history.replaceState(null,"",it?"#items":"#");
+ var it=v==="items",kp=v==="keep",ctl=!it&&!kp;
+ $("itemsView").hidden=!it;$("keepView").hidden=!kp;$("ctlView").hidden=!ctl;
+ $("v-items").setAttribute("aria-selected",String(it));$("v-keep").setAttribute("aria-selected",String(kp));$("v-ctl").setAttribute("aria-selected",String(ctl));
+ if(!ctl){stopStream();if(it)loadItems();else loadKeep()}else if(!stillT){startStream()}
+ history.replaceState(null,"",it?"#items":kp?"#keep":"#");
 }
 $("clearItems").onclick=function(){
  if(!items.length)return;
  if(!confirm("모은 아이템 목록 "+items.length+"개를 비울까요?\n(기록은 PC의 collected 폴더 안 old_ 폴더로 옮겨 둡니다)"))return;
  fetch("/api/items/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){items=[];cat="all";drawItems()}).catch(function(){});
 };
-$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};
+$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};
 setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);
-if(location.hash==="#items")show("items");
+if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");
 
-document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!stillT&&$("itemsView").hidden)startStream()}});
+document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!stillT&&!$("ctlView").hidden)startStream()}});
 </script></body></html>

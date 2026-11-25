@@ -180,6 +180,7 @@ class App(tk.Tk):
         self.l_upd.pack(side="left")
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
 
@@ -328,11 +329,11 @@ class App(tk.Tk):
                 self.scanning = False
         threading.Thread(target=work, daemon=True).start()
 
-    def _open_items(self):
-        """The same page as on the phone, opened on this PC at the collected-items list."""
+    def _open_items(self, view="items"):
+        """The same page as on the phone, opened on this PC at the collected-items (or keep) list."""
         import webbrowser
         port = int(self.cfg.get("remote_port", 8765))
-        webbrowser.open("http://127.0.0.1:%d/?k=%s#items" % (port, self.cfg.get("remote_pin", "")))
+        webbrowser.open("http://127.0.0.1:%d/?k=%s#%s" % (port, self.cfg.get("remote_pin", ""), view))
 
     def _open_records(self):
         d = self.rec.dir or os.path.join(BASE, "records")

@@ -274,6 +274,14 @@ class Remote:
                 if u.path == "/api/items/clear" and method == "POST":
                     n = clear_items()
                     return self._send(200, json.dumps({"cleared": n}).encode("utf-8"), "application/json")
+                if u.path == "/api/keeplist" and method == "GET":
+                    from . import scorer
+                    ok, how = scorer.status()
+                    body = json.dumps({"order": scorer.KEEP_LIST.get("order", []),
+                                       "classes": scorer.KEEP_LIST.get("classes", {}),
+                                       "pics": sorted(scorer.keep_pictures()), "ocr": ok, "ocr_text": how},
+                                      ensure_ascii=False)
+                    return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/items" and method == "GET":
                     body = json.dumps({"items": read_items(remote.base), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")

@@ -958,7 +958,7 @@ def cleanup(io, opts, base_dir, log, stop):
     # 1) collection tab: register new ones, try a swap when this copy may be better
     forged_here = any(ev_ and (ev_.get("forged") or ev_.get("keep_name")) for ev_ in last_ev.values())
     if forged_here:
-        log("강화한 아이템이나 꼭 보관할 아이템(바람살·신념·명예의 굴레·수수께끼)이 인벤토리에 있음: "
+        log("강화한 아이템이나 보관 목록의 아이템이 인벤토리에 있음: "
             "게임의 '수집' 버튼은 쓰지 않고 하나씩만 등록")
     if not gold_green and not plan.get("register") and not plan.get("swap"):
         pass
