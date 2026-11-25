@@ -783,8 +783,10 @@ class App(tk.Tk):
         self._close(quiet=True)
         bat = os.path.join(BASE, "run.bat")
         if os.name == "nt" and os.path.exists(bat):
-            # the same way it is normally started (a console that stays open if something goes wrong)
-            subprocess.Popen(["cmd", "/c", "start", "", bat], cwd=BASE, creationflags=0x00000008)  # DETACHED
+            # the same way it is normally started, in a console of its own. "cmd /c": the window closes by
+            # itself when the program ends ('start' ran the batch file with cmd /k, which left an empty
+            # command prompt behind after every update). This program's own window closes as it exits.
+            subprocess.Popen(["cmd", "/c", bat], cwd=BASE, creationflags=0x00000010)  # CREATE_NEW_CONSOLE
         else:
             subprocess.Popen([sys.executable, os.path.join(BASE, "main.py")], cwd=BASE)
         os._exit(0)
