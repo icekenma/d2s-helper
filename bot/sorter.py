@@ -585,6 +585,17 @@ def cleanup(io, opts, base_dir, log, stop):
     """Charsi's window is open: register/replace uniques and sets in the collection tab, move
     essences and keepers to the stash, sell the rest. Items that cannot be read go to the stash
     instead of being sold. -> (text, done)"""
+    class _Either:                              # the caller's stop, or this tidy-up's own abort
+        def __init__(self, outer):
+            self.outer, self.mine = outer, False
+
+        def is_set(self):
+            return self.mine or (self.outer is not None and self.outer.is_set())
+
+        def set(self):
+            self.mine = True                       # (never stops the whole helper)
+
+    stop = _Either(stop)
     frame = io.grab()
     if frame is None:
         return "게임 창을 찾지 못함", False
@@ -641,10 +652,38 @@ def cleanup(io, opts, base_dir, log, stop):
     assumed = {}               # cell -> (top-left cell of its item, info): not hovered separately
     footprint = {}             # top-left cell -> the cells its item is taken to cover
 
+    park_ref = [None]
+
+    def park_patch():
+        """The empty stone under the parked cursor (an item held on the cursor would show there)."""
+        _park(io, geo)
+        n_ = norm_now()
+        if n_ is None:
+            return None
+        x, y = PARK
+        return n_[y - 28:y + 28, x - 40:x + 40].astype(np.int16)
+
+    def holding():
+        if park_ref[0] is None:
+            return False
+        p_ = park_patch()
+        return p_ is not None and float(np.abs(p_ - park_ref[0]).mean()) > 14.0
+
     def tap(pt, mod=None, wait=0.4):
         io.click(*geo.raw(*pt), mod=mod)
         time.sleep(wait)
         base_img[0] = None
+        if mod and holding():
+            # Ctrl / Shift did not reach the game: the click picked the item up instead of moving it.
+            # Put it straight back where it was, and stop: an item on the cursor must never be dropped
+            # anywhere else (on the ground or on the shop it would be lost or sold).
+            io.click(*geo.raw(*pt))
+            time.sleep(0.4)
+            if holding():
+                io.click(*geo.raw(*pt))
+                time.sleep(0.4)
+            log("Ctrl/Shift 클릭이 안 먹어서 아이템이 마우스에 들림 → 제자리에 되돌리고 정리를 멈춤")
+            stop.set()
 
     def acted(cell):
         """An item was clicked: the cells taken to be part of it are looked at again if still filled."""
@@ -768,7 +807,7 @@ def cleanup(io, opts, base_dir, log, stop):
         n = norm_now()
         return n is not None and bool(read_inventory(n)[cell[1]][cell[0]])
 
-    _park(io, geo)
+    park_ref[0] = park_patch()                  # what the parked cursor sees with nothing held
     n0 = norm_now()
     inv0 = read_inventory(n0) if n0 is not None else None
     if inv0 is not None and not any(v for row in inv0 for v in row):
