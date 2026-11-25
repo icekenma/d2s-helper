@@ -279,6 +279,16 @@ def tooltip_crop(base, hover, geo):
     return hover[max(0, y - p):y2 + p, max(0, x - p):x2 + p].copy()
 
 
+def forged_tip(tip):
+    """An item the player has reinforced (강화): its boosted lines are drawn in orange ("... ×4").
+    Such an item is the player's own work: never registered, sold or moved by the sorter."""
+    if tip is None:
+        return False
+    b, g, r = [tip[:, :, i].astype(np.int32) for i in range(3)]
+    orange = (r > 190) & (g > 105) & (g < 190) & (b < 70) & (r - g > 50)
+    return int(orange.sum()) > 60
+
+
 def same_tip(a, b):
     """True when two info-box crops show the same text (allows a few pixels of shift)."""
     if abs(a.shape[0] - b.shape[0]) > 4 or abs(a.shape[1] - b.shape[1]) > 4:
@@ -673,6 +683,8 @@ def cleanup(io, opts, base_dir, log, stop):
                 else:
                     try:
                         ev = scorer.evaluate(tip, geo.s, words)
+                        if ev is not None:
+                            ev["forged"] = forged_tip(tip)
                     except Exception as e:
                         log("정보창 판독 오류: %s" % e)
                     tips.append((tip, ev))
@@ -707,6 +719,8 @@ def cleanup(io, opts, base_dir, log, stop):
     def decide(ev, cell=None):
         if not ev:
             return "leave"                      # no info box could be read: never sell blind
+        if ev.get("forged"):
+            return "leave"                      # reinforced by the player (강화): never touched
         if ev["color"] == "yellow" and not ev["keep"] and cell is not None:
             # a rare quiver of arrows / bolts is 1 cell wide and 3 tall: kept even when its base name
             # cannot be read (a rare dagger, scepter or javelin of that size is kept too: no harm done)
@@ -772,6 +786,9 @@ def cleanup(io, opts, base_dir, log, stop):
     stash_kinds = ("essence", "keep", "leave")
 
     # 1) collection tab: register new ones, try a swap when this copy may be better
+    forged_here = any(ev_ and ev_.get("forged") for ev_ in last_ev.values())
+    if forged_here:
+        log("강화한 아이템이 인벤토리에 있음: 그대로 둠 (게임의 '수집' 버튼은 쓰지 않고 하나씩만 등록)")
     if not gold_green and not plan.get("register") and not plan.get("swap"):
         pass
     else:
@@ -780,7 +797,8 @@ def cleanup(io, opts, base_dir, log, stop):
         else:
             seen_items = {c_: tip_of.get(c_) for c_ in footprint}
             evs = {c_: ev_ for c_, ev_ in last_ev.items()}
-            tap((BTN_COLLECT[0] + shift["bottom"][0], BTN_COLLECT[1] + shift["bottom"][1]), wait=0.9)               # the game registers every new unique and set itself
+            if not forged_here:
+                tap((BTN_COLLECT[0] + shift["bottom"][0], BTN_COLLECT[1] + shift["bottom"][1]), wait=0.9)  # the game registers every new unique and set itself
             _park(io, geo)
             n_after = norm_now()
             inv_after = read_inventory(n_after) if n_after is not None else None
