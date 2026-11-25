@@ -417,6 +417,15 @@ def evaluate(crop, s, keep_words=None):
             nm = keep_by_text(name)
             if nm:
                 _set_keep(out, nm)
+        if out["kind"] == "주얼" or has_word(name, "주얼"):
+            # 증뎀 주얼: '+N% 피해 증가' among its lines (read only when Tesseract works)
+            for l in lines[1:]:
+                if l["color"] in ("white", "dim", "none"):
+                    continue
+                m = re.search(r"(\d+)\s*%\s*피\S?\s*[증중층충]\s*가", text(l).translate(QTY_FIX))
+                if m:
+                    out["ed"] = int(m.group(1))
+                    break
         if color not in ("gold", "green"):
             if not out["keep"] and (ends_with(name, "룬") or ends_with(name, "정수") or has_word(name, "열쇠")
                                      or has_word(name, "주얼")):

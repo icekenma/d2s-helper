@@ -24,6 +24,7 @@ for _i in range(1, 13):
 
 STAGE_LIMIT = 240         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
 FAST_LIMIT = 160          # the same in 패스트 모드 (2:40)
+FAST_PICK_EXTRA = 40      # 패스트 모드 that also picks up jewels / uniques: time for the pick-up and the smith
 
 
 def limit_text(sec):
@@ -32,7 +33,10 @@ def limit_text(sec):
 
 
 def stage_limit(state):
-    return FAST_LIMIT if (state or {}).get("fast") else STAGE_LIMIT
+    st = state or {}
+    if st.get("fast"):
+        return FAST_LIMIT + (FAST_PICK_EXTRA if st.get("fast_pick") else 0)
+    return STAGE_LIMIT
 
 
 def grab_client(sct, rect):
@@ -65,6 +69,7 @@ class Engine(threading.Thread):
         self.clock_at, self.clock_prev = 0.0, None
         self.out_since = None                     # since when the run info at the top right is gone
         self.stage_at = 0.0
+        self.boss_tag = None
         self.need_out = False                     # left on purpose: the clock waits for town / loading first
         self.state["stage_in"] = None             # when this run's stage was entered (3-minute limit)
 
@@ -286,6 +291,10 @@ class Engine(threading.Thread):
         if si and st.get("run_reset", 0) > si:
             st["stage_in"] = si = None                 # the run ended and starts over
             runlog.end(now, "다시 시작")
+        oa = st.get("over_at")
+        if si and oa and oa >= si and self.boss_tag != si:
+            self.boss_tag = si
+            runlog.tag("boss", oa, oa)             # when the boss died in this run (for the run table)
         if frame is None or now - self.stage_at < 0.9:
             return
         self.stage_at = now

@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from pynput.keyboard import Key
 
-from . import scorer, sorter, spot, win
+from . import runlog, scorer, sorter, spot, win
 
 KIND_KO = {"set": "세트", "unique": "유니크", "chest": "상자", "jewel": "주얼"}
 ARROWS = {"up": Key.up, "down": Key.down, "left": Key.left, "right": Key.right}
@@ -205,6 +205,8 @@ def find_labels(frame, s):
 
 
 LOOT_WORDS = ["정수", "열쇠", "부적"]
+FAST_PICK_SEC = 25          # 패스트 모드 extras: seconds after the boss for the jewel / unique markers
+FAST_PICK_SMITH = 45        # ... and, when something was picked up, for the smith
 SMITHS = ["찰시", "흐라틀리", "할부", "라주크"]      # smiths whose name picture is known (acts 1, 3, 4, 5)
 
 
@@ -367,6 +369,7 @@ class Picker:
         self.fast_counted = False
         self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
         self.act_name = ""
+        self.fast_pick, self.base_kinds = None, set(self.kinds)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -520,6 +523,10 @@ class Picker:
         self.fast_counted = False
         self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
         self.act_name = ""
+        if self.fast_pick is not None:
+            self.kinds = set(self.base_kinds)
+        self.fast_pick = None
+        self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
         self.ess_mem, self.ess_note = [], 0.0
@@ -817,6 +824,21 @@ class Picker:
 
     def _finish(self, frame, s, now, me, portal, mark):
         """Nothing left to pick up: the smith only if the bags hold something, then the portal."""
+        if self.fast_pick is not None:
+            # 패스트 모드 extras: the smith only when a jewel / unique came in this run, then Esc -> town
+            cleaned = self.state.get("cleaned", 0) > (self.over_since or 0)
+            if (self.count and self.opts.get("auto_clean") and not cleaned and not self.forced
+                    and not self.gave_up):
+                if self.npc_since is not None and now - self.npc_since > FAST_PICK_SMITH:
+                    self.gave_up = True
+                    self.log("패스트 모드: 대장장이 창을 열지 못해 정리 없이 다음 판 (주운 것은 인벤토리에 둠)")
+                    return
+                self._go_smith(frame, s, now, me, portal, mark, "패스트 모드: 주운 %d개 정리" % self.count)
+                return
+            if self.exit_tries < 6:
+                self._exit_town(now, "패스트 모드: %s -> Esc로 마을로 가서 다음 판"
+                                % ("정리 끝" if cleaned else "주울 표시 없음" if not self.count else "줍기 끝"))
+            return
         if self.stage_start is None:
             self.stage_start, self.gave_up = now, False
             self.npc_since = None
@@ -858,6 +880,11 @@ class Picker:
             return
         self._portal_now(frame, s, now, me, portal, mark)
 
+    def _fast_kinds(self):
+        """패스트 모드 extras switched on: the minimap markers to go for after the boss."""
+        o = self.opts
+        return {k for k, on in (("jewel", o.get("fast_jewel")), ("unique", o.get("fast_unique"))) if on}
+
     def _act_check(self, frame, now):
         """패스트 모드: read the act of the new run a few times; acts 3 and 4 give two essences."""
         if self.act_t0 is None:
@@ -871,20 +898,32 @@ class Picker:
         v = [x for x in self.act_votes if x is not None]
         good = sum(1 for x in v if x in (3, 4))
         bad = sum(1 for x in v if x in (0, 1, 2, 5))
+        if not self.opts.get("fast_mode"):
+            # not 패스트 모드: only noted for the run table, never left for
+            known = [x for x in v if x]
+            if len(known) >= 2 and known.count(max(set(known), key=known.count)) >= 2:
+                self.act_done = True
+                runlog.tag("act", max(set(known), key=known.count))
+            elif now - self.act_t0 > 7:
+                self.act_done = True
+            return
         if good >= 2:
             self.act_done, self.reroll_n = True, 0
             a = max((3, 4), key=lambda k: v.count(k))
+            runlog.tag("act", a)
             self.log("패스트 모드: %d막 - 이 판 진행 (정수 2개)" % a)
         elif bad >= 3 and good == 0:
             self.act_done = True
             k = max(set(v), key=v.count)
             self.act_name = "%d막" % k if k else "1막이나 2막"
+            runlog.tag("act", k or None)
             if self.reroll_n >= 10:
                 self.reroll_n = 0
                 self.log("패스트 모드: %s이지만 10번 연속 다시 뽑아서 이번 판은 그대로 진행" % self.act_name)
             else:
                 self.reroll_n += 1
                 self.rerolling = True
+                runlog.tag("skip", k or 0)
                 self.exit_tries, self.exit_at = 0, 0.0
         elif now - self.act_t0 > 7:
             self.act_done = True
@@ -1268,6 +1307,8 @@ class Picker:
         """The hunt ended more than the allowed time ago: straight to the portal, whatever is left."""
         limit = float(self.opts.get("over_limit", 60) or 0)
         base = self.over_since
+        if self.fast_pick is not None:
+            base, limit = self.fast_pick, FAST_PICK_SEC + (FAST_PICK_SMITH if self.count else 0)
         if self.route_end is not None:
             base, limit = self.route_end, max(limit, 100.0)     # after the route: smith + portal get their own time
         if base is None or limit <= 0 or now - base <= limit:
@@ -1314,8 +1355,8 @@ class Picker:
                 self._exit_town(now, "패스트 모드: %s이라 바로 나가서 다시 들어감 (3막·4막만)" % self.act_name)
                 return
             self.rerolling = False
-        if (self.opts.get("fast_mode") and self.over_since is None and not self.act_done and self.run_text
-                and now - self.terror_last < 2 and now - self.act_at >= 0.3):
+        if (self.over_since is None and not self.act_done and self.run_text
+                and now - self.terror_last < 2 and now - self.act_at >= (0.3 if self.opts.get("fast_mode") else 0.6)):
             self.act_at = now
             self._act_check(frame, now)
             if self.rerolling:
@@ -1323,7 +1364,8 @@ class Picker:
         if self.opts.get("fast_mode") and self.over_since is not None and not self.forced:
             # 패스트 모드: the essences come into the bags by themselves when the boss dies. Pick up
             # nothing, no route, no smith, no inventory: Esc -> town -> next run.
-            self.release()
+            if self.fast_pick is None:
+                self.release()
             if now - self.over_since < 2.0:
                 return
             if not self.fast_counted and self.opts.get("fast_count"):
@@ -1331,10 +1373,23 @@ class Picker:
                 self._fast_count()
                 self.frame = None
                 return
-            if self.exit_tries < 6:
-                self._exit_town(now, "패스트 모드: 보스 처치 -> Esc로 마을로 가서 다음 판")
-            return                                # 패스트 모드 never picks up: wait for the time limit
-        if self._route(now):
+            want = self._fast_kinds()
+            if want and self.fast_pick is None and self.exit_tries == 0:
+                # 확장: walk to the minimap markers of jewels / uniques only, then the smith if anything came in
+                self.fast_pick, self.kinds = now, want
+                self.ess_t0, self.ess_done, self.ss_done, self.sweep_done = now, True, True, True
+                self.log("패스트 모드: 보스 처치 -> 미니맵의 %s 표시만 줍기 (최대 %d초, 없으면 바로 다음 판)"
+                         % ("·".join(KIND_KO[k] for k in ("jewel", "unique") if k in want), FAST_PICK_SEC))
+            if self.fast_pick is None:
+                if self.exit_tries < 6:
+                    self._exit_town(now, "패스트 모드: 보스 처치 -> Esc로 마을로 가서 다음 판")
+                return                            # 패스트 모드 never picks up more: wait for the time limit
+            if self.exit_tries > 0:
+                self.release()
+                if self.exit_tries < 6:
+                    self._exit_town(now, "패스트 모드: 줍기 끝 -> Esc로 마을로 가서 다음 판")
+                return
+        if self.fast_pick is None and self._route(now):
             return
         h, w = frame.shape[:2]
         s = (h - self.top) / 600.0
@@ -1362,6 +1417,9 @@ class Picker:
                 return
             if self.route_played and not self.forced:
                 self._finish(frame, s, now, (0.0, 0.0), portal, None)
+                return
+            if self.fast_pick is not None:
+                self._finish(frame, s, now, (0.0, 0.0), portal, None)     # no minimap: no markers to go to
                 return
             if self.over_since is not None and not self.forced:
                 # essences first, minimap or not: their names are on the screen itself
@@ -1603,7 +1661,7 @@ class Picker:
                 self.ess_t0 = now
                 self.release()
                 self.log("줍기 시작: 화면에서 정수부터 찾음")
-            if self.loot_goal is not None or now - self.loot_look >= 0.4:
+            if self.fast_pick is None and (self.loot_goal is not None or now - self.loot_look >= 0.4):
                 if self._loot(frame, s, now):
                     self.idle_since = None
                     self.stage_start = None

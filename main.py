@@ -38,6 +38,10 @@ ENGINE_CFG = {"window_title": TITLE, "interval": 0.5, "dry_run": False, "client_
                        "min_score": 60, "keep_min": 0, "keep_words": "정수", "swap_better": False}}
 PICK_OPTS = {"set": True, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
              "town_start": True, "town_stage": 0, "collect_after": True, "mouse_move": True, "over_limit": 100}
+FAST_EXT = [("count", "정수 세기"), ("jewel", "주얼 줍기"), ("unique", "유니크 줍기")]
+FAST_EXT_NOTE = {"count": "보스 처치 뒤 인벤토리를 잠깐 열어 불타는 정수 수량을 읽음",
+                 "jewel": "보스 처치 뒤 미니맵의 주얼 표시만 주움 (증뎀은 모은 아이템에 표시)",
+                 "unique": "보스 처치 뒤 미니맵의 유니크 표시만 주움 (보관 목록 아이템은 보관함)"}
 RULES = [
     ("마을", "웨이포인트를 눌러 위에서 정한 공포 영역 단계로 들어갑니다(비워 두면 목록 맨 위의 새로 열린 단계)."),
     ("사냥", "보스가 죽어 '차원문이 열렸습니다'가 뜰 때까지 움직이지 않습니다."),
@@ -177,6 +181,16 @@ class App(tk.Tk):
                         command=lambda: self._set_fast(self.v_fast.get(), "PC")).pack(side="left")
         tk.Label(ff, text="아이템을 줍지 않고 보스를 잡으면 바로 Esc로 마을 -> 다음 판 (정수는 저절로 들어옴)",
                  bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
+        xf = tk.Frame(self, bg=BG)
+        xf.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(xf, text="패스트 확장", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
+        ext = self._fast_ext()
+        self.v_ext = {}
+        for k, label in FAST_EXT:
+            v = tk.BooleanVar(value=ext[k])
+            self.v_ext[k] = v
+            ttk.Checkbutton(xf, text=label, variable=v,
+                            command=lambda k=k: self._set_fast_ext({k: self.v_ext[k].get()}, "PC")).pack(side="left", padx=(8, 0))
 
         kf = tk.Frame(self, bg=BG)
         kf.pack(fill="x", padx=20, pady=(0, 10))
@@ -325,6 +339,38 @@ class App(tk.Tk):
                                            else "단계 미지정 (목록 맨 위 새 단계)"))
         self._share()
 
+    def _fast_ext(self):
+        e = self.cfg.get("fast_ext") or {}
+        return {k: bool(e.get(k, False)) for k, _ in FAST_EXT}
+
+    def _apply_fast_ext(self):
+        e = self._fast_ext()
+        if self.picker is not None and getattr(self.picker, "p", None) is not None:
+            self.picker.p.opts.update(fast_count=e["count"], fast_jewel=e["jewel"], fast_unique=e["unique"])
+        if self.engine is not None:
+            self.engine.state["fast_pick"] = e["jewel"] or e["unique"]
+
+    def _set_fast_ext(self, changes, who="휴대폰"):
+        """패스트 모드 extras: count the essences, pick up jewels / uniques after the boss."""
+        e = self._fast_ext()
+        e.update({k: bool(v) for k, v in changes.items() if k in e})
+        self.cfg["fast_ext"] = e
+        save_cfg(self.cfg)
+        for k, v in self.v_ext.items():
+            try:
+                v.set(e[k])
+            except Exception:
+                pass
+        self._apply_fast_ext()
+        names = dict(FAST_EXT)
+        for k, v in changes.items():
+            if k in names:
+                self._say("%s에서 패스트 확장 '%s' %s%s" % (who, names[k], "켬" if v else "끔",
+                                                     ": " + FAST_EXT_NOTE[k] if v else ""))
+        if e["jewel"] or e["unique"]:
+            self._say("패스트 모드 판 제한: 줍기·정리 시간까지 %s" % limit_text(self._limit()))
+        self._share()
+
     def _set_fast(self, on, who="휴대폰"):
         """패스트 모드: no pick-up, no route, no smith; after the boss Esc -> town -> next run."""
         on = bool(on)
@@ -338,7 +384,10 @@ class App(tk.Tk):
             self.picker.p.opts["fast_mode"] = on
         if self.engine is not None:
             self.engine.state["fast"] = on
-        self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판, 2분 40초 지나면 무조건 다음 판 (아이템 줍기·정리 안 함)" if on
+        e = self._fast_ext()
+        extra = [n for k, n in FAST_EXT if e[k]]
+        self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판, %s 지나면 무조건 다음 판 (%s)" % (
+            limit_text(self._limit()), "확장: " + ", ".join(extra) if extra else "아이템 줍기·정리 안 함") if on
                                             else "끔: 녹음 경로·줍기·대장장이 정리를 다시 함"))
         self._share()
 
@@ -517,7 +566,8 @@ class App(tk.Tk):
             self._say("기록 폴더를 열지 못함: %s (%s)" % (d, e))
 
     def _limit(self):
-        return stage_limit({"fast": bool(self.cfg.get("fast_mode", False))})
+        e = self._fast_ext()
+        return stage_limit({"fast": bool(self.cfg.get("fast_mode", False)), "fast_pick": e["jewel"] or e["unique"]})
 
     def _stage_left(self):
         """Seconds left in this stage before the forced move to the next run, or None outside a stage."""
@@ -541,7 +591,7 @@ class App(tk.Tk):
         self.shared = {"stage_left": left, "stage_limit": self._limit(), "running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
-                       "fast": bool(self.cfg.get("fast_mode", False))}
+                       "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext()}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -555,6 +605,7 @@ class App(tk.Tk):
             self.remote.set_stage = lambda n: self.q.put(("stage", n))
             self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
             self.remote.set_fast = lambda on: self.q.put(("fast", on))
+            self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -616,12 +667,15 @@ class App(tk.Tk):
         self.rec.start()
         self.started_at = time.time()
         emit = lambda k, p: self.q.put((k, p))
-        state = {"target": stage, "deaths": 0, "fast": bool(self.cfg.get("fast_mode", False))}
+        ext = self._fast_ext()
+        state = {"target": stage, "deaths": 0, "fast": bool(self.cfg.get("fast_mode", False)),
+                 "fast_pick": ext["jewel"] or ext["unique"]}
         ecfg = json.loads(json.dumps(ENGINE_CFG))
         ecfg["always_town"] = stage > 0
         if self.keys.recording:
             self.rec_toggle()
-        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events))   # a recording replaces the screen sweep
+        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events),   # a recording replaces the screen sweep
+                     fast_count=ext["count"], fast_jewel=ext["jewel"], fast_unique=ext["unique"])
         self._say("공포 영역 %d단계만 반복" % stage if stage else "단계 미지정: 목록 맨 위의 새로 열린 단계로 진행")
         self.engine = Engine(ecfg, BASE, emit, self.io_lock, state)
         self.engine.start()
@@ -670,6 +724,8 @@ class App(tk.Tk):
                     self._set_stage(int(p or 0))
                 elif kind == "fast":
                     self._set_fast(p)
+                elif kind == "fast_ext":
+                    self._set_fast_ext(p)
                 elif kind == "keep_star":
                     n = max(1, min(5, int(p or 1)))
                     scorer.set_min_star(n)

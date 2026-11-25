@@ -891,6 +891,18 @@ def record_item(base_dir, action, ev, tip, tab=""):
                 "name": ev.get("name") or ev.get("seen_name") or "", "raw": ev.get("raw") or "", "kind": ev.get("kind") or "",
                 "quality": ev.get("quality") or "", "color": ev.get("color") or "", "score": ev.get("score"),
                 "img": img}
+        if ev.get("ed"):
+            line["ed"] = ev["ed"]                  # 증뎀 주얼: +N% 피해 증가
+        if tip is not None and ev.get("kind") == "주얼":
+            # a lossless copy of every jewel's info box: the pictures to teach the helper '피해 증가' from
+            try:
+                pd = os.path.join(d, "png")
+                os.makedirs(pd, exist_ok=True)
+                ok, buf = cv2.imencode(".png", tip)
+                if ok and len(os.listdir(pd)) < 300:
+                    buf.tofile(os.path.join(pd, img.replace(".jpg", ".png") if img else "%d.png" % int(now)))
+            except Exception:
+                pass
         with open(os.path.join(d, "index.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
     except Exception:

@@ -309,6 +309,17 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/fastext" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        ext = {k: bool(d[k]) for k in ("count", "jewel", "unique") if k in d}
+                    except Exception:
+                        return self._send(400, b'{"error":"fastext"}', "application/json")
+                    cb = getattr(remote, "set_fast_ext", None)
+                    if cb and ext:
+                        cb(ext)
+                    return self._send(200, json.dumps(ext).encode("utf-8"), "application/json")
                 if u.path in ("/api/sort", "/api/scan") and method == "POST":
                     remote.sort()                # (this slot now starts the gear scan)
                     return self._send(200, b"{}", "application/json")

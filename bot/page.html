@@ -174,41 +174,136 @@ summary::-webkit-details-marker{display:none}
 .est .stg .best{color:var(--gold2);font-weight:700}
 .est .stg em{font-style:normal;color:var(--ash);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
 .est .none{font-size:13px;color:var(--ash);margin-top:8px;line-height:1.5}
-/* run table: one row per run, tap to open the items of that run */
-.rnow{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r);background:linear-gradient(160deg,#2c2316,var(--iron));
- box-shadow:inset 0 0 0 1px rgba(210,163,74,.5)}
-.rnow .dotl{width:9px;height:9px;border-radius:50%;background:var(--gold2);box-shadow:0 0 0 4px rgba(210,163,74,.18);flex:none}
-.rnow div{display:flex;flex-direction:column;gap:2px;min-width:0}
-.rnow b{font-size:15px}
-.rnow span{font-size:12.5px;color:var(--ash)}
-.rnow .clk{margin-left:auto;font-size:26px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums}
-.rsum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.rsum div{padding:10px 11px;border-radius:12px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
-.rsum span{display:block;font-size:11.5px;color:var(--ash)}
-.rsum b{font-size:18px;font-variant-numeric:tabular-nums}
-.rsum b.g{color:var(--gold2)}
-.rtab{border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge);overflow:hidden}
-.rh,.rr{display:grid;grid-template-columns:34px minmax(0,1.5fr) 50px 40px minmax(0,1fr);gap:8px;align-items:center;padding:0 12px}
-.rh{padding-top:10px;padding-bottom:8px;font-size:11.5px;color:var(--ash);border-bottom:1px solid var(--edge)}
-.rh span:nth-child(3),.rh span:nth-child(4),.rr .c3,.rr .c4{text-align:right}
-.rr{width:100%;border:0;background:none;color:var(--bone);text-align:left;font:inherit;font-size:13.5px;min-height:46px;
- border-bottom:1px solid rgba(255,255,255,.04);font-variant-numeric:tabular-nums}
-.rr:nth-child(even){background:rgba(255,255,255,.018)}
-.rr .c1{font-weight:700;color:var(--ash)}
-.rr .c2 small{display:block;font-size:11px;color:var(--ash)}
-.rr .c4{font-weight:800;color:var(--gold2)}
-.rr .c4.z{color:var(--dim);font-weight:600}
-.rr .c5{font-size:12.5px;color:var(--ash);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rr .c5 b{color:var(--bone);font-weight:700;margin-right:4px}
-.rr.live{background:linear-gradient(90deg,rgba(210,163,74,.12),transparent 70%);box-shadow:inset 3px 0 0 var(--gold)}
-.rr.live .c1{color:var(--gold2)}
-.rr[aria-expanded=true]{background:var(--iron2)}
-.rdet{padding:6px 14px 12px 54px;background:var(--iron2);border-bottom:1px solid var(--edge);font-size:13px}
+/* run log: the forge. A live ring for the run under way, the day's burning essences, a strip of
+   the last runs (height = time, colour = essences), then one card per run */
+.rlog{--ember:#ff7a2f;--ember2:#ffb15c;--ashb:#2a2420}
+.hero{position:relative;display:grid;grid-template-columns:128px minmax(0,1fr);gap:16px;align-items:center;padding:16px;border-radius:18px;overflow:hidden;
+ background:radial-gradient(90% 120% at 15% 100%,rgba(255,122,47,.16),transparent 60%),linear-gradient(160deg,#241b13,var(--iron));
+ box-shadow:inset 0 0 0 1px rgba(210,163,74,.35)}
+.hero.idle{background:linear-gradient(160deg,var(--iron2),var(--iron));box-shadow:inset 0 0 0 1px var(--edge)}
+.ring{position:relative;width:128px;height:128px}
+.ring svg{display:block;width:128px;height:128px;transform:rotate(-90deg)}
+.ring .tr{fill:none;stroke:var(--abyss);stroke-width:9}
+.ring .pr{fill:none;stroke:url(#rg);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .9s linear}
+.ring .bt{fill:var(--bone);stroke:var(--abyss);stroke-width:2}
+.hero.late .ring .pr{stroke:var(--blood2)}
+.ring .ctr{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .clk{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.03em;color:var(--gold2)}
+.ring .of{font-size:11.5px;color:var(--ash);margin-top:4px;font-variant-numeric:tabular-nums}
+.hero.idle .clk{color:var(--dim)}
+.hero .hd{font-size:17px;font-weight:800;line-height:1.25}
+.hero .ln{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;
+ background:rgba(13,11,10,.55);box-shadow:inset 0 0 0 1px var(--edge2);color:var(--bone);white-space:nowrap}
+.pill.hot{color:#1b0e05;background:linear-gradient(var(--ember2),var(--ember));box-shadow:0 0 14px rgba(255,122,47,.35)}
+.pill.ok{color:var(--life);box-shadow:inset 0 0 0 1px rgba(127,191,90,.45)}
+.pill.dim{color:var(--ash)}
+.hero .say{margin-top:9px;font-size:12.5px;color:var(--ash);line-height:1.45}
+.embers{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.embers i{position:absolute;bottom:-6px;width:3px;height:3px;border-radius:50%;background:var(--ember2);opacity:0;
+ box-shadow:0 0 6px var(--ember);animation:rise 3.6s linear infinite}
+.hero.idle .embers{display:none}
+@keyframes rise{0%{transform:translate(0,0);opacity:0}15%{opacity:.9}100%{transform:translate(var(--dx,8px),-150px);opacity:0}}
+
+/* today's essences */
+.forge{position:relative;padding:16px 16px 14px;border-radius:18px;background:linear-gradient(160deg,var(--iron2),var(--iron));box-shadow:inset 0 0 0 1px var(--edge)}
+.forge .row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.forge .lb{font-size:13.5px;font-weight:700}
+.forge .lb small{display:block;font-size:12px;font-weight:500;color:var(--ash);margin-top:2px}
+.forge .big{display:flex;align-items:center;gap:8px;font-size:46px;font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-.04em;
+ color:var(--ember2);text-shadow:0 0 24px rgba(255,122,47,.35)}
+.flame{display:inline-block;width:10px;height:15px;flex:none;background:linear-gradient(to top,var(--ember),var(--ember2) 60%,#ffe2a0);
+ clip-path:path("M5 0C6 4 10 5 10 9.5A5 5 0 0 1 0 9.5C0 7 1.6 5.6 2.6 4.6 2.6 6.2 3.4 7 4.2 7 3.2 4.6 4 2 5 0Z");
+ -webkit-clip-path:path("M5 0C6 4 10 5 10 9.5A5 5 0 0 1 0 9.5C0 7 1.6 5.6 2.6 4.6 2.6 6.2 3.4 7 4.2 7 3.2 4.6 4 2 5 0Z")}
+.forge .big .flame{width:20px;height:29px;clip-path:path("M10 0C12 8 20 10 20 19A10 10 0 0 1 0 19C0 14 3.2 11.2 5.2 9.2 5.2 12.4 6.8 14 8.4 14 6.4 9.2 8 4 10 0Z");
+ -webkit-clip-path:path("M10 0C12 8 20 10 20 19A10 10 0 0 1 0 19C0 14 3.2 11.2 5.2 9.2 5.2 12.4 6.8 14 8.4 14 6.4 9.2 8 4 10 0Z");animation:flick 1.6s ease-in-out infinite}
+@keyframes flick{0%,100%{transform:scale(1,1)}50%{transform:scale(.94,1.06) translateY(-1px)}}
+.meter{position:relative;height:10px;border-radius:5px;margin-top:14px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);overflow:hidden}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:5px;background:linear-gradient(90deg,#8a3412,var(--ember),var(--ember2));transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.forge .cap{display:flex;justify-content:space-between;font-size:12px;color:var(--ash);margin-top:6px;font-variant-numeric:tabular-nums}
+.forge .cap b{color:var(--bone)}
+.burst{position:absolute;right:22px;top:10px;font-size:22px;font-weight:800;color:var(--ember2);pointer-events:none;
+ text-shadow:0 0 12px rgba(255,122,47,.7);animation:burst 1.6s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes burst{0%{transform:translateY(14px) scale(.6);opacity:0}20%{transform:translateY(0) scale(1.15);opacity:1}100%{transform:translateY(-34px) scale(1);opacity:0}}
+
+/* the strip of runs */
+.strip{padding:12px 14px 10px;border-radius:18px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.strip .sh{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ash)}
+.strip .sh b{color:var(--bone);font-size:13.5px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:74px;margin-top:10px;position:relative}
+.bars::before{content:"";position:absolute;left:0;right:0;bottom:calc(var(--lim,1)*100%);border-top:1px dashed rgba(196,66,58,.55)}
+.bars button{flex:1;min-width:0;border:0;padding:0;border-radius:3px 3px 1px 1px;background:var(--edge2);height:6%;position:relative}
+.bars button.v1{background:linear-gradient(to top,#7a5a24,var(--gold))}
+.bars button.v2{background:linear-gradient(to top,#8a3412,var(--ember))}
+.bars button.v3{background:linear-gradient(to top,var(--ember),var(--ember2));box-shadow:0 0 8px rgba(255,177,92,.45)}
+.bars button.sk{background:repeating-linear-gradient(135deg,var(--edge2) 0 3px,transparent 3px 6px);box-shadow:inset 0 0 0 1px var(--edge2)}
+.bars button.lv{background:linear-gradient(to top,rgba(240,201,111,.2),var(--gold2));animation:lv 1.4s ease-in-out infinite}
+.bars button.sel{outline:2px solid var(--bone);outline-offset:1px}
+@keyframes lv{50%{opacity:.55}}
+.legend{display:flex;gap:12px;margin-top:8px;font-size:11.5px;color:var(--ash);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+/* insight tiles */
+.ins{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ins>div{padding:11px 12px;border-radius:14px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge);min-width:0}
+.ins span{display:block;font-size:12px;color:var(--ash)}
+.ins b{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px;letter-spacing:-.02em}
+.ins small{display:block;font-size:11.5px;color:var(--ash);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ins .good b{color:var(--life)}.ins .bad b{color:var(--blood2)}.ins .gold b{color:var(--gold2)}
+.luck{height:6px;border-radius:3px;background:var(--abyss);margin-top:7px;overflow:hidden}
+.luck i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--ember2))}
+
+/* one card per run */
+#rRows{display:grid;gap:6px}
+.rc{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;border:0;text-align:left;font:inherit;color:var(--bone);
+ padding:10px 12px;border-radius:14px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.rc.new{animation:drop .7s cubic-bezier(.2,.8,.2,1)}
+@keyframes drop{from{transform:translateY(-10px);opacity:0;box-shadow:inset 0 0 0 1px var(--ember)}to{transform:none;opacity:1}}
+.shield{width:40px;height:44px;display:grid;place-items:center;font-size:15px;font-weight:800;color:var(--ash);
+ background:var(--abyss);clip-path:polygon(50% 0,100% 14%,100% 62%,50% 100%,0 62%,0 14%);box-shadow:inset 0 0 0 1px var(--edge2)}
+.shield.a3,.shield.a4{color:#1b0e05;background:linear-gradient(var(--ember2),var(--ember))}
+.shield.a1,.shield.a2,.shield.a5{color:var(--bone);background:linear-gradient(#3a322b,#211c18)}
+.rc .mid{min-width:0;display:block}
+.rc .mid>span{display:block}
+.rc .t1{display:flex;gap:8px;align-items:baseline;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.rc .t1 em{font-style:normal;font-size:12px;font-weight:500;color:var(--ash)}
+.rc .tl{position:relative;height:6px;border-radius:3px;background:var(--abyss);margin-top:7px;overflow:visible}
+.rc .tl i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:linear-gradient(90deg,#6b5427,var(--gold))}
+.rc .tl b{position:absolute;top:-3px;width:2px;height:12px;border-radius:1px;background:var(--bone);box-shadow:0 0 0 1px var(--abyss)}
+.rc.over .tl i{background:linear-gradient(90deg,#5a2420,var(--blood2))}
+.rc .t2{font-size:11.5px;color:var(--ash);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc .gain{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.rc .fl{display:flex;gap:2px;font-size:22px}
+.rc .fl .flame{animation:none}
+.rc .gn{font-size:12px;font-weight:800;color:var(--ember2);font-variant-numeric:tabular-nums}
+.rc .gn.guess{color:var(--ash);font-weight:600}
+.rc .gn.z{color:var(--dim)}
+.rc.live{box-shadow:inset 0 0 0 1px rgba(210,163,74,.6);background:linear-gradient(90deg,rgba(210,163,74,.1),transparent 70%),var(--iron)}
+.rc.live .tl i{background:linear-gradient(90deg,var(--gold),var(--gold2))}
+.rc[aria-expanded=true]{background:var(--iron2)}
+.rs{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:var(--ash);border-radius:10px;
+ background:repeating-linear-gradient(135deg,rgba(255,255,255,.015) 0 6px,transparent 6px 12px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+.rs b{color:var(--bone);font-weight:700;font-variant-numeric:tabular-nums}
+.rs .ar{font-size:14px;color:var(--dim)}
+.rs time{margin-left:auto;font-variant-numeric:tabular-nums}
+.rdet{margin:-2px 0 2px;padding:10px 14px 12px;border-radius:0 0 14px 14px;background:var(--iron2);box-shadow:inset 0 0 0 1px var(--edge);font-size:13px}
 .rdet p{margin:4px 0;display:flex;gap:8px}
 .rdet time{color:var(--ash);font-variant-numeric:tabular-nums;flex:none}
 .rdet em{font-style:normal;color:var(--ash);margin-left:auto;white-space:nowrap}
 .rdet .why{color:var(--ash);font-size:12px;margin-top:6px}
-.rempty{padding:22px 16px;color:var(--ash);font-size:13.5px;line-height:1.55}
+.edb{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:800;color:#1b0e05;background:var(--ember2);vertical-align:1px}
+.rempty{padding:22px 16px;color:var(--ash);font-size:13.5px;line-height:1.55;border-radius:14px;box-shadow:inset 0 0 0 1px var(--edge)}
+@media (prefers-reduced-motion:reduce){.embers{display:none}.forge .big .flame,.bars button.lv,.rc.new,.burst{animation:none}.burst{display:none}
+ .meter i,.ring .pr{transition:none}}
+/* fast mode extras (control tab) */
+.fx{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:-4px}
+.fx button{border:0;border-radius:12px;padding:10px 6px 9px;font-size:13.5px;font-weight:700;line-height:1.2;color:var(--ash);
+ background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.fx button small{display:block;font-size:11px;font-weight:500;margin-top:3px;color:var(--dim)}
+.fx button[aria-pressed=true]{color:var(--gold2);background:linear-gradient(160deg,#2c2316,var(--iron));box-shadow:inset 0 0 0 1px rgba(210,163,74,.55)}
+.fx button[aria-pressed=true] small{color:var(--gold)}
+.fx.off button{opacity:.55}
 .ess{padding:14px 16px;border-radius:var(--r);background:linear-gradient(160deg,var(--iron2),var(--iron));
  box-shadow:inset 0 0 0 1px var(--edge)}
 .ess .hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -301,12 +396,31 @@ summary::-webkit-details-marker{display:none}
  <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
 </div></div>
 <section class="items rlog" id="runsView" hidden>
- <div class="rnow" id="rNow" hidden></div>
- <div class="rsum" id="rSum"></div>
- <div class="rtab" role="table" aria-label="판 기록">
-  <div class="rh" role="row"><span>판</span><span>시작 → 종료</span><span>시간</span><span>정수</span><span>아이템</span></div>
-  <div id="rRows"></div>
+ <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+  <stop offset="0" stop-color="#f0c96f"/><stop offset="1" stop-color="#ff7a2f"/></linearGradient></defs></svg>
+ <div class="hero idle" id="rHero">
+  <div class="embers" id="rEmb" aria-hidden="true"></div>
+  <div class="ring"><svg viewBox="0 0 128 128" aria-hidden="true"><circle class="tr" cx="64" cy="64" r="54"/>
+   <circle class="pr" id="rRing" cx="64" cy="64" r="54" stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
+   <circle class="bt" id="rBoss" cx="118" cy="64" r="5" style="display:none"/></svg>
+   <div class="ctr"><span class="clk" id="rClk">-:--</span><span class="of" id="rOf"></span></div></div>
+  <div><div class="hd" id="rHd">기다리는 중</div><div class="ln" id="rLn"></div><div class="say" id="rSay"></div></div>
  </div>
+ <div class="forge" id="rForge">
+  <div class="row"><div class="lb">오늘 불타는 정수<small id="rFsub">판 기록이 쌓이면 셉니다</small></div>
+   <div class="big"><span class="flame" aria-hidden="true"></span><span id="rEss">0</span></div></div>
+  <div class="meter" aria-hidden="true"><i id="rMeter" style="width:0"></i></div>
+  <div class="cap"><span id="rGoal"></span><span id="rRate"></span></div>
+ </div>
+ <div class="strip">
+  <div class="sh"><b>최근 판</b><span id="rStripN"></span></div>
+  <div class="bars" id="rBars" role="list" aria-label="최근 판: 높이는 걸린 시간, 색은 정수 개수"></div>
+  <div class="legend"><span><i style="background:var(--ember2)"></i>정수 3개+</span><span><i style="background:var(--ember)"></i>2개</span>
+   <span><i style="background:var(--gold)"></i>1개</span><span><i style="background:repeating-linear-gradient(135deg,#3f362e 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1px #3f362e"></i>건너뜀</span>
+   <span><i style="border-top:1px dashed var(--blood2);height:0;border-radius:0"></i>판 시간 제한</span></div>
+ </div>
+ <div class="ins" id="rIns"></div>
+ <div id="rRows"></div>
  <button class="clear" type="button" id="clearRuns">판 기록 비우기</button>
 </section>
 <section class="items keep" id="keepView" hidden>
@@ -352,6 +466,11 @@ summary::-webkit-details-marker{display:none}
    <span class="ft"><b>패스트 모드</b><span id="fastSub">보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함</span></span>
    <span class="sw" aria-hidden="true"><i></i></span>
   </button>
+  <div class="fx off" id="fx" role="group" aria-label="패스트 모드 확장">
+   <button type="button" data-k="count" aria-pressed="false">정수 세기<small>인벤토리로 확인</small></button>
+   <button type="button" data-k="jewel" aria-pressed="false">주얼 줍기<small>증뎀 표시</small></button>
+   <button type="button" data-k="unique" aria-pressed="false">유니크 줍기<small>보관 목록은 보관함</small></button>
+  </div>
   <div class="screen empty" id="screen" aria-label="게임 화면. 누르면 그 자리 클릭, 길게 누르면 그쪽으로 계속 달림">
    <img id="live" alt="">
    <div class="wait" id="wait">게임 화면을 불러오는 중</div>
@@ -397,7 +516,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 /* status */
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -408,9 +527,14 @@ function status(){
 }
 /* fast mode: one tap, sent at once; the PC's value shows otherwise */
 var fastOn=false,fastBusy=0;
-function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));
- $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 2분 40초가 지나면 바로 다음 판 · 정수만 모음":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
+function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));if($("fx"))$("fx").className="fx"+(fastOn?"":" off");
+ $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 "+mss(CD.limit||160)+"이 지나면 바로 다음 판 · 아래 확장만 함":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+/* fast mode extras: each a toggle, sent at once */
+var fx={count:false,jewel:false,unique:false},fxBusy=0;
+function fxDraw(){$("fx").className="fx"+(fastOn?"":" off");Array.prototype.forEach.call($("fx").children,function(b){b.setAttribute("aria-pressed",String(!!fx[b.dataset.k]))})}
+function fxFrom(s){if(!s.fast_ext||Date.now()<fxBusy)return;fx=s.fast_ext;fxDraw()}
+Array.prototype.forEach.call($("fx").children,function(b){b.onclick=function(){var k=b.dataset.k,d={};fx[k]=!fx[k];d[k]=fx[k];fxBusy=Date.now()+4000;fxDraw();post("/api/fastext",d)}});
 $("fastBtn").onclick=function(){fastOn=!fastOn;fastBusy=Date.now()+4000;fastDraw();post("/api/fast",{on:fastOn}).catch(function(){})};
 /* stage to repeat: edited here, sent with 적용; the PC's value shows when nothing is being edited */
 var stageNow=null,stageDirty=false;
@@ -524,11 +648,12 @@ Array.prototype.forEach.call(document.querySelectorAll(".keys button"),function(
 
 /* ---- collected items: everything registered or stashed (sold items are not kept) ---- */
 var items=[],cat="all",shown=200;
-var CATS=[["all","전체"],["star","★ 보관 목록"],["reg","유니크·세트 등록"],["charm","부적"],["rune","룬·열쇠"],["etc","기타"]];
+var CATS=[["all","전체"],["star","★ 보관 목록"],["reg","유니크·세트 등록"],["jewel","주얼"],["charm","부적"],["rune","룬·열쇠"],["etc","기타"]];
 function catOf(x){
  if(x.action&&x.action.indexOf("등록")>=0)return "reg";
  var k=(x.kind||"")+" "+(x.name||"")+" "+(x.raw||"");
  if(k.indexOf("정수")>=0)return "ess";
+ if(k.indexOf("주얼")>=0)return "jewel";
  if(k.indexOf("부적")>=0)return "charm";
  if(k.indexOf("룬")>=0||k.indexOf("열쇠")>=0)return "rune";
  return "etc";
@@ -605,7 +730,7 @@ function drawItems(){
 }
 function row(x){
  var th=x.img?' style="background-image:url(/items/'+x.img+')"':"",st=starsOf(x);
- return '<button class="it'+(st?" starred":"")+'" type="button" data-img="'+(x.img||"")+'" data-cap="'+esc(nameOf(x)+" · "+sub(x)+" · "+hhmm(x.t))+'"><span class="th"'+th+'></span><span><span class="nm q-'+(x.color||"")+'">'+esc(nameOf(x))+'</span>'+(st?starHtml(st):"")+'<span class="sb">'+esc(sub(x))+"</span></span><time>"+hhmm(x.t)+"</time></button>";
+ return '<button class="it'+(st?" starred":"")+'" type="button" data-img="'+(x.img||"")+'" data-cap="'+esc(nameOf(x)+" · "+sub(x)+" · "+hhmm(x.t))+'"><span class="th"'+th+'></span><span><span class="nm q-'+(x.color||"")+'">'+esc(nameOf(x))+(x.ed?'<span class="edb">증뎀 '+x.ed+'%</span>':"")+'</span>'+(st?starHtml(st):"")+'<span class="sb">'+esc(sub(x))+"</span></span><time>"+hhmm(x.t)+"</time></button>";
 }
 function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML}
 function zoom(img,cap){if(!img)return;var z=document.createElement("div");z.className="zoom";
@@ -647,42 +772,118 @@ function drawKeep(){
  });
  $("kList").innerHTML=html;
 }
-/* ---- run table ---- */
-var runs=[],openRun=null,runsT=null;
+/* ---- run log ---- */
+var runs=[],openRun=null,runsT=null,seenN=null,newN={},essShown=null,essAnim=null;
+var ROMAN=["?","Ⅰ","Ⅱ","Ⅲ","Ⅳ","Ⅴ"];
 function two(n){return (n<10?"0":"")+n}
-function hms(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds())}
+function tclock(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds())}
 function hm(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())}
 function mss(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+":"+two(s%60)}
+function gainOf(r){return r.ess!=null?r.ess:(r.est!=null?r.est:null)}
 function loadRuns(){
  fetch("/api/runs").then(function(r){return r.json()}).then(function(d){runs=d.runs||[];var skew=Date.now()/1000-(d.now||Date.now()/1000);
-  runs.forEach(function(r){r._skew=skew});drawRuns()}).catch(function(){});
+  runs.forEach(function(r){r._skew=skew});
+  var top=runs.length?runs[0].n:0;
+  if(seenN!==null)runs.forEach(function(r){if(r.n>seenN&&!r.live)newN[r.n]=1});
+  if(seenN===null||top>seenN)seenN=runs.filter(function(r){return !r.live}).reduce(function(a,r){return Math.max(a,r.n)},0);
+  drawRuns(true)}).catch(function(){});
 }
-function drawRuns(){
- var now=Date.now()/1000,cur=runs.length&&runs[0].live?runs[0]:null;
+function embers(){var e=$("rEmb");if(e.childNodes.length)return;var h="";
+ for(var i=0;i<9;i++)h+='<i style="left:'+(8+i*10.5)+'%;--dx:'+(i%2?-1:1)*(6+i*2)+'px;animation-delay:'+(i*0.41).toFixed(2)+'s;animation-duration:'+(3+(i%4)*0.5)+'s"></i>';
+ e.innerHTML=h}
+function rollEss(to){
+ var el=$("rEss");if(essShown===null||to<=essShown){essShown=to;el.textContent=to;return}
+ var from=essShown,t0=performance.now(),k=to-from;essShown=to;
+ var b=document.createElement("span");b.className="burst";b.textContent="+"+k;$("rForge").appendChild(b);setTimeout(function(){b.remove()},1700);
+ cancelAnimationFrame(essAnim);
+ (function step(t){var p=Math.min(1,(t-t0)/900);el.textContent=Math.round(from+k*(1-Math.pow(1-p,3)));if(p<1)essAnim=requestAnimationFrame(step)})(t0);
+}
+function drawRuns(full){
+ var now=Date.now()/1000,lim=CD.limit||240,cur=runs.length&&runs[0].live?runs[0]:null;
  var t0=new Date();t0.setHours(0,0,0,0);t0=t0.getTime()/1000;
- var td=runs.filter(function(r){return r.start>=t0}),done=td.filter(function(r){return !r.live});
- var ess=td.filter(function(r){return r.ess!=null}),essN=ess.reduce(function(a,r){return a+r.ess},0);
- var timed=done.filter(function(r){return r.ess!=null}),secs=timed.reduce(function(a,r){return a+r.secs},0);
- var itemsN=td.reduce(function(a,r){return a+r.items.length},0);
- if(cur){var el=now-(cur._skew||0)-cur.start;$("rNow").innerHTML='<i class="dotl"></i><div><b>'+cur.n+'판 진행 중</b><span>공포 '+(cur.stage||"-")+'단계 · '+hm(cur.start)+' 시작</span></div><span class="clk">'+mss(el)+"</span>";$("rNow").hidden=false}
- else $("rNow").hidden=true;
- $("rSum").innerHTML='<div><span>오늘 판</span><b>'+td.length+'</b></div><div><span>판당 평균</span><b>'+(done.length?mss(done.reduce(function(a,r){return a+r.secs},0)/done.length):"–")+
-  '</b></div><div><span>보관·등록</span><b>'+itemsN+'개</b></div><div><span>오늘 불타는 정수</span><b class="g">'+(ess.length?essN+"개":"–")+
-  '</b></div><div><span>정수 / 시간</span><b class="g">'+(secs>60?(Math.round(timed.reduce(function(a,r){return a+r.ess},0)*36000/secs)/10):"–")+
-  '</b></div><div><span>정수 / 판</span><b class="g">'+(ess.length?Math.round(essN*100/ess.length)/100:"–")+"</b></div>";
- if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 한 줄씩 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}
- $("rRows").innerHTML=runs.map(function(r){
-  var dur=r.live?now-(r._skew||0)-r.start:r.secs,names=r.items.map(function(x){return x.name});
-  var row='<button type="button" class="rr'+(r.live?" live":"")+'" data-n="'+r.n+'" aria-expanded="'+(openRun===r.n)+'"><span class="c1">'+r.n+
-   '</span><span class="c2">'+hm(r.start)+" → "+(r.live?"진행 중":hm(r.end))+'<small>공포 '+(r.stage||"-")+'단계</small></span><span class="c3">'+mss(dur)+
-   '</span><span class="c4'+(r.ess?"":" z")+'">'+(r.ess==null?"–":r.ess)+'</span><span class="c5">'+(names.length?"<b>"+names.length+"</b>"+esc(names.join(", ")):"")+"</span></button>";
+ var td=runs.filter(function(r){return r.start>=t0});
+ var done=td.filter(function(r){return !r.live}),play=done.filter(function(r){return !r.skip}),skips=done.filter(function(r){return r.skip});
+ /* hero: the run under way */
+ var hero=$("rHero"),C=339.3;
+ if(cur){
+  var el=now-(cur._skew||0)-cur.start,p=Math.min(1,el/lim);
+  hero.className="hero"+(el>lim*0.8?" late":"");embers();
+  $("rRing").setAttribute("stroke-dashoffset",(C*(1-p)).toFixed(1));
+  $("rClk").textContent=mss(el);$("rOf").textContent="제한 "+mss(lim);
+  var bt=$("rBoss");
+  if(cur.boss_secs!=null){var a=2*Math.PI*Math.min(1,cur.boss_secs/lim);bt.setAttribute("cx",(64+54*Math.cos(a)).toFixed(1));bt.setAttribute("cy",(64+54*Math.sin(a)).toFixed(1));bt.style.display=""}else bt.style.display="none";
+  $("rHd").textContent=cur.n+"판째 사냥 중";
+  var ln=[];
+  if(cur.act)ln.push('<span class="pill'+(cur.act===3||cur.act===4?" hot":"")+'">'+cur.act+"막</span>");
+  ln.push('<span class="pill dim">공포 '+(cur.stage||"-")+"단계</span>");
+  if(cur.boss_secs!=null)ln.push('<span class="pill ok">보스 '+mss(cur.boss_secs)+" 처치</span>");
+  $("rLn").innerHTML=ln.join("");
+  var g=cur.act?((cur.act===3||cur.act===4?2:1)+Math.floor((cur.stage||0)/50)):null;
+  $("rSay").textContent=cur.boss_secs!=null?(g?"정수 "+g+"개 들어옴 · 다음 판 준비":"보스를 잡았습니다 · 다음 판 준비"):
+   (g?"보스를 잡으면 정수 "+g+"개":"막을 읽는 중")+" · "+mss(Math.max(0,lim-el))+" 남음";
+ }else{
+  hero.className="hero idle";$("rRing").setAttribute("stroke-dashoffset",C);$("rBoss").style.display="none";$("rClk").textContent="-:--";$("rOf").textContent="";
+  $("rHd").textContent=runs.length?"마을에서 다음 판 준비":"아직 판 기록 없음";$("rLn").innerHTML="";
+  $("rSay").textContent=runs.length?"마지막 판 "+hm(runs[0].end||runs[0].start)+" 끝":"사냥터에 들어가면 판마다 시간이 흐르고 정수가 쌓입니다";
+ }
+ /* forge: today's essences */
+ var got=play.filter(function(r){return gainOf(r)!=null}),essN=got.reduce(function(a,r){return a+gainOf(r)},0);
+ var real=got.filter(function(r){return r.ess!=null}).length;
+ rollEss(essN);
+ var goal=Math.max(10,Math.ceil((essN+1)/10)*10);
+ $("rMeter").style.width=(100*(essN-(goal-10))/10)+"%";
+ $("rGoal").innerHTML="<b>"+goal+"</b>개까지 "+(goal-essN)+"개";
+ var span=done.length?(Math.max.apply(null,done.map(function(r){return r.end||r.start}))-Math.min.apply(null,done.map(function(r){return r.start}))):0;
+ $("rRate").innerHTML=span>300?"시간당 <b>"+(Math.round(essN*36000/span)/10)+"</b>개":"";
+ $("rFsub").textContent=got.length?(play.length+"판"+(real<got.length?" · "+(got.length-real)+"판은 막·단계로 셈":" · 인벤토리에서 읽은 수"))
+  :"보스를 잡은 판의 막·단계, 또는 인벤토리 수량으로 셉니다";
+ if(!full&&!cur)return;
+ /* strip: the last 40 runs, oldest first */
+ var last=runs.slice(0,40).reverse();
+ var mxs=Math.max(lim,Math.max.apply(null,last.map(function(r){return r.live?now-(r._skew||0)-r.start:r.secs}).concat([1])));
+ $("rBars").style.setProperty("--lim",(lim/mxs).toFixed(3));
+ $("rBars").innerHTML=last.map(function(r){var s=r.live?now-(r._skew||0)-r.start:r.secs,g=gainOf(r);
+  var c=r.live?"lv":r.skip?"sk":g>=3?"v3":g===2?"v2":g===1?"v1":"";
+  return '<button type="button" role="listitem" class="'+c+(openRun===r.n?" sel":"")+'" data-n="'+r.n+'" style="height:'+Math.max(6,100*s/mxs).toFixed(1)+'%" aria-label="'+r.n+"판 "+mss(s)+(r.skip?" 건너뜀":g!=null?" 정수 "+g+"개":"")+'"></button>'}).join("");
+ $("rStripN").textContent=td.length?"오늘 "+td.length+"판"+(skips.length?" (건너뜀 "+skips.length+")":""):"";
+ Array.prototype.forEach.call($("rBars").children,function(b){b.onclick=function(){openRun=+b.dataset.n;drawRuns(true);
+  var c=document.querySelector('.rc[data-n="'+b.dataset.n+'"]');if(c)c.scrollIntoView({behavior:"smooth",block:"center"})}});
+ /* insights */
+ var cl=play.filter(function(r){return r.boss_secs!=null});
+ var avg=play.length?play.reduce(function(a,r){return a+r.secs},0)/play.length:null;
+ var fast=cl.length?cl.reduce(function(a,r){return r.secs<a.secs?r:a}):null;
+ var boss=cl.length?cl.reduce(function(a,r){return a+r.boss_secs},0)/cl.length:null;
+ var skAvg=skips.length?skips.reduce(function(a,r){return a+r.secs},0)/skips.length:null;
+ var stg=(cur||runs[0]||{}).stage||0,bonus=Math.floor(stg/50),T=avg||150,be=0.4*T/(1.4+bonus);
+ var acts=td.filter(function(r){return r.act}),hot=acts.filter(function(r){return r.act===3||r.act===4}).length;
+ $("rIns").innerHTML=
+  '<div class="gold"><span>판당 평균</span><b>'+(avg!=null?mss(avg):"–")+"</b><small>"+(fast?"최고 "+mss(fast.secs)+" ("+fast.n+"판)":"건너뛴 판 빼고")+"</small></div>"+
+  '<div><span>보스까지</span><b>'+(boss!=null?mss(boss):"–")+"</b><small>"+(cl.length?"보스 잡은 "+cl.length+"판 평균":"보스 처치 시각을 기다리는 중")+"</small></div>"+
+  '<div class="'+(skAvg==null?"":skAvg<=be?"good":"bad")+'"><span>건너뛰기 한 번</span><b>'+(skAvg!=null?mss(skAvg):"–")+"</b><small>"+
+   (skAvg!=null?(skAvg<=be?"이득 · ":"손해 · ")+mss(be)+" 넘으면 손해":"이득 기준 "+mss(be)+" 이하")+"</small></div>"+
+  '<div><span>3·4막 비율</span><b>'+(acts.length?Math.round(100*hot/acts.length)+"%":"–")+"</b><div class=\"luck\"><i style=\"width:"+(acts.length?100*hot/acts.length:0)+"%\"></i></div><small>"+(acts.length?"막을 읽은 "+acts.length+"판 중 "+hot+"판":"패스트 모드에서 막을 읽음")+"</small></div>";
+ /* cards */
+ if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 카드가 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}
+ var html="";
+ runs.slice(0,150).forEach(function(r){
+  var dur=r.live?now-(r._skew||0)-r.start:r.secs,g=gainOf(r);
+  if(r.skip&&!r.live){html+='<div class="rs"><span class="ar">↷</span><span>'+(typeof r.skip==="number"&&r.skip?r.skip+"막":"1·2막")+" 건너뜀</span><b>"+mss(dur)+"</b><time>"+hm(r.start)+"</time></div>";return}
+  var fl="";if(g)for(var i=0;i<Math.min(g,5);i++)fl+='<span class="flame"></span>';
+  var items=r.items||[],ed=items.filter(function(x){return x.ed});
+  html+='<button type="button" class="rc'+(r.live?" live":"")+(dur>lim?" over":"")+(newN[r.n]?" new":"")+'" data-n="'+r.n+'" aria-expanded="'+(openRun===r.n)+'">'+
+   '<span class="shield a'+(r.act||0)+'">'+ROMAN[r.act||0]+"</span>"+
+   '<span class="mid"><span class="t1">'+r.n+"판 <em>"+hm(r.start)+" · "+mss(dur)+(r.live?" 진행 중":"")+"</em></span>"+
+   '<span class="tl"><i style="width:'+Math.min(100,100*dur/lim).toFixed(1)+'%"></i>'+(r.boss_secs!=null?'<b style="left:'+Math.min(99,100*r.boss_secs/lim).toFixed(1)+'%"></b>':"")+"</span>"+
+   '<span class="t2">공포 '+(r.stage||"-")+"단계"+(r.boss_secs!=null?" · 보스 "+mss(r.boss_secs):r.live?"":" · 보스 못 잡음")+(items.length?" · 아이템 "+items.length+"개":"")+(ed.length?" · 증뎀 "+ed.length:"")+"</span></span>"+
+   '<span class="gain"><span class="fl">'+fl+'</span><span class="gn'+(g==null?" z":r.ess==null?" guess":"")+'">'+(g==null?(r.live?"":"–"):(r.ess==null?"약 ":"")+g+"개")+"</span></span></button>";
   if(openRun===r.n){
-   row+='<div class="rdet">'+(r.items.length?r.items.map(function(x){return "<p><time>"+hms(x.t)+"</time><span>"+esc(x.name)+"</span><em>"+esc(x.action+(x.tab?" · "+x.tab+" 탭":""))+"</em></p>"}).join(""):
+   html+='<div class="rdet">'+(items.length?items.map(function(x){return "<p><time>"+tclock(x.t)+'</time><span class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</span>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+"<em>"+esc(x.action+(x.tab?" · "+x.tab+" 탭":""))+"</em></p>"}).join(""):
     '<p><span style="color:var(--ash)">보관·등록한 아이템 없음 (판매한 아이템은 기록하지 않음)</span></p>')+
-    '<div class="why">'+hms(r.start)+" ~ "+(r.live?"진행 중":hms(r.end))+(r.why?" · "+esc(r.why):"")+"</div></div>";
+    '<div class="why">'+tclock(r.start)+" ~ "+(r.live?"진행 중":tclock(r.end))+(r.why?" · "+esc(r.why):"")+(r.ess==null&&g!=null?" · 정수는 막·단계로 셈 (인벤토리에서 읽지 않음)":"")+"</div></div>";
   }
-  return row}).join("");
- Array.prototype.forEach.call(document.querySelectorAll(".rr"),function(b){b.onclick=function(){var n=+b.dataset.n;openRun=openRun===n?null:n;drawRuns()}});
+ });
+ $("rRows").innerHTML=html;newN={};
+ Array.prototype.forEach.call(document.querySelectorAll(".rc"),function(b){b.onclick=function(){var n=+b.dataset.n;openRun=openRun===n?null:n;drawRuns(true)}});
 }
 function show(v){
  var it=v==="items",kp=v==="keep",rn=v==="runs",ctl=!it&&!kp&&!rn;
