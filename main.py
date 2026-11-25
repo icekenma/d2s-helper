@@ -115,7 +115,7 @@ class App(tk.Tk):
         self.hot.start()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.restarting, self.upd_seen, self.scanning = False, None, False
-        self.upd = Updater(BASE, lambda m: self.q.put(("log", m)))
+        self.upd = Updater(BASE, lambda m: self.q.put(("log", m)), every=20)
         self.upd.start()
         self.title("D2S Helper v%s" % local_version(BASE))
         self.after(100, self._pump)
@@ -802,16 +802,13 @@ class App(tk.Tk):
         self.after(150, self._pump)
 
     def _maybe_restart(self):
-        """A new version was copied in: restart at a quiet moment (stopped, or in town between runs)."""
+        """A new version was copied in: restart at once (and carry on running if it was)."""
         if not self.upd.ready or self.restarting or getattr(self, "scanning", False):
             return                                   # (never in the middle of a gear scan)
-        if self.upd_seen is None:
-            self.upd_seen = time.time()
-        st = getattr(self.engine, "state", None) or {}
-        quiet = self.engine is None or (not st.get("over") and self.picker is not None
-                                        and getattr(self.picker, "in_town", lambda: False)())
-        if not quiet and time.time() - self.upd_seen < 600:
-            return                                   # (after 10 minutes it restarts anyway)
+        # at once: only an inventory tidy-up / item move under way (it holds the game lock) is let finish
+        if not self.io_lock.acquire(False):
+            return
+        self.io_lock.release()
         self.restarting = True
         self.cfg["resume"] = self.engine is not None
         save_cfg(self.cfg)

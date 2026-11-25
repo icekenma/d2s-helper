@@ -91,4 +91,4 @@ class Updater(threading.Thread):
         shutil.rmtree(tmp, ignore_errors=True)
         self.ready = remote
         self.status = "v%s 받음: 판 사이에 다시 시작" % remote
-        self.log("새 버전 v%s 받음 (v%s -> v%s): 판이 끝나면 자동으로 다시 시작" % (remote, mine, remote))
+        self.log("새 버전 v%s 받음 (v%s -> v%s): 바로 다시 시작" % (remote, mine, remote))
