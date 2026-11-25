@@ -323,6 +323,13 @@ def read_act(frame, top, base_dir):
     c2 = np.where(wd.max(0) > 0.35)[0]
     if not len(c2):
         return None, {}
+    run = 0                                     # width of the digit: the first columns with ink
+    for cx in range(c2[0], wd.shape[1]):
+        if wd[:, cx].max() <= 0.35:
+            break
+        run += 1
+    if run <= 2:                                # a thin stroke followed by a gap: "1막"
+        return 1, {1: 1.0}
     d = wd[:, c2[0]:c2[0] + 7]
     r2 = np.where(d.max(1) > 0.35)[0]
     if not len(r2):
