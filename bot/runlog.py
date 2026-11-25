@@ -122,6 +122,49 @@ def build(limit=200):
     return runs[::-1]
 
 
+STASH = "essence_stash.json"
+
+
+def set_stash(n):
+    """The user's count of burning essences in the stash, as of now (the helper adds what it stashes later)."""
+    try:
+        with _lock, open(paths.p(STASH), "w", encoding="utf-8") as f:
+            json.dump({"n": max(0, int(n)), "t": time.time()}, f)
+    except (OSError, ValueError):
+        pass
+
+
+def holdings(runs=None):
+    """Burning essences the character holds: the last inventory reading, the stash (the user's count plus
+    what the helper stashed after it) and, since that reading, what the runs gave (counted by act / stage).
+    -> {"inv", "inv_t", "stash", "stash_set", "since", "total"} (None where not known)"""
+    from . import sorter
+    rows = _lines(sorter.ESS_LOG)
+    try:
+        with open(paths.p(STASH), "r", encoding="utf-8") as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        st = None
+    inv = inv_t = None
+    moved = 0
+    for r in rows:
+        stacks, gone = r.get("stacks") or {}, set(r.get("stashed") or [])
+        inv, inv_t = sum(q for k, q in stacks.items() if k not in gone), r.get("t")
+        if st and r.get("t", 0) > st.get("t", 0):
+            moved += sum(q for k, q in stacks.items() if k in gone)
+    stash = (int(st.get("n", 0)) + moved) if st else None
+    since = 0
+    if inv_t:
+        for r in runs if runs is not None else build(300):
+            if r.get("boss") and r["boss"] > inv_t and not r.get("skip") and r.get("est"):
+                since += r["est"]
+    total = None
+    if inv is not None or stash is not None:
+        total = (inv or 0) + (stash or 0) + since
+    return {"inv": inv, "inv_t": inv_t, "stash": stash, "stash_set": bool(st), "stash_t": st.get("t") if st else None,
+            "since": since, "total": total}
+
+
 def clear():
     """Start the run table again: the old lines are moved aside (runs_old_<time>.jsonl). A run under way
     stays in the new table, and the last essence count stays as the starting point of the next one.

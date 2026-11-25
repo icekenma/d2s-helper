@@ -230,6 +230,24 @@ summary::-webkit-details-marker{display:none}
  text-shadow:0 0 12px rgba(255,122,47,.7);animation:burst 1.6s cubic-bezier(.2,.7,.3,1) forwards}
 @keyframes burst{0%{transform:translateY(14px) scale(.6);opacity:0}20%{transform:translateY(0) scale(1.15);opacity:1}100%{transform:translateY(-34px) scale(1);opacity:0}}
 
+/* what the character holds */
+.hold{padding:14px 16px;border-radius:18px;background:linear-gradient(160deg,#1f1915,var(--iron));box-shadow:inset 0 0 0 1px var(--edge)}
+.hold .htop{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.hold .lb{font-size:13.5px;font-weight:700}
+.hold .lb small{display:block;font-size:12px;font-weight:500;color:var(--ash);margin-top:2px}
+.hold .hn{display:flex;align-items:baseline;white-space:nowrap;flex:none}
+.hold .hn b{font-size:34px;font-weight:800;line-height:1;color:var(--bone);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.hold .hn small{font-size:13px;color:var(--ash);margin-left:3px;font-weight:600}
+.hparts{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:12px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2)}
+.hparts i{display:block;height:100%}
+.hparts .pi{background:linear-gradient(90deg,#8a3412,var(--ember))}
+.hparts .ps{background:linear-gradient(90deg,#6b5427,var(--gold))}
+.hparts .pe{background:repeating-linear-gradient(135deg,var(--ember2) 0 3px,rgba(255,177,92,.35) 3px 6px)}
+.hkey{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--ash);font-variant-numeric:tabular-nums}
+.hkey span{display:inline-flex;align-items:center;gap:5px}
+.hkey i{width:8px;height:8px;border-radius:2px}
+.hkey b{color:var(--bone)}
+.hset{margin-top:10px;border:0;background:none;color:var(--gold2);font-size:12.5px;font-weight:700;padding:6px 0}
 /* the strip of runs */
 .strip{padding:12px 14px 10px;border-radius:18px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 .strip .sh{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ash)}
@@ -416,6 +434,12 @@ summary::-webkit-details-marker{display:none}
    <div class="big"><span class="flame" aria-hidden="true"></span><span id="rEss">0</span></div></div>
   <div class="meter" aria-hidden="true"><i id="rMeter" style="width:0"></i></div>
   <div class="cap"><span id="rGoal"></span><span id="rRate"></span></div>
+ </div>
+ <div class="hold" id="rHold">
+  <div class="htop"><div class="lb">지금 가진 불타는 정수<small id="rHoldSub">인벤토리를 한 번 읽으면 나옵니다</small></div>
+   <div class="hn"><b id="rHoldN">–</b><small>개</small></div></div>
+  <div class="hparts" id="rHoldParts"></div>
+  <button type="button" class="hset" id="rStashSet">보관함 개수 입력</button>
  </div>
  <div class="strip">
   <div class="sh"><b>최근 판</b><span id="rStripN"></span></div>
@@ -790,9 +814,31 @@ var runsAt=0,runsErr=false,runsBusy=false,runsTick=0;
 function freshDraw(){var el=$("rFresh");if(!el)return;var a=runsAt?Math.round((Date.now()-runsAt)/1000):null;
  el.className="rfresh"+(runsErr?" err":a!=null&&a<=4?" ok":"");
  $("rFreshT").textContent=runsErr?"PC와 연결이 끊김 · 다시 시도하는 중":a==null?"불러오는 중":a<=4?"실시간 · 3초마다 새로고침":a+"초 전 기록"}
+var hold=null;
+function drawHold(){
+ var h=hold;if(!h)return;
+ $("rHoldN").textContent=h.total==null?"–":h.total;
+ var sub=[];if(h.inv_t)sub.push("인벤토리 "+hm(h.inv_t)+" 읽음");
+ sub.push(h.stash_set?"보관함은 입력한 수 + 도우미가 옮긴 수":"보관함 개수를 넣으면 합계에 더함");
+ $("rHoldSub").textContent=sub.join(" · ");
+ var inv=h.inv||0,st=h.stash||0,se=h.since||0,all=Math.max(1,inv+st+se);
+ $("rHoldParts").innerHTML='<i class="pi" style="width:'+(100*inv/all)+'%"></i><i class="ps" style="width:'+(100*st/all)+'%"></i><i class="pe" style="width:'+(100*se/all)+'%"></i>';
+ var key='<div class="hkey"><span><i style="background:var(--ember)"></i>인벤토리 <b>'+(h.inv==null?"–":inv)+"</b></span>"+
+  '<span><i style="background:var(--gold)"></i>보관함 <b>'+(h.stash==null?"?":st)+"</b></span>"+
+  (se?'<span><i style="background:var(--ember2)"></i>읽은 뒤 판 추정 <b>+'+se+"</b></span>":"")+"</div>";
+ var k=$("rHold").querySelector(".hkey");if(k)k.remove();
+ $("rHoldParts").insertAdjacentHTML("afterend",key);
+ $("rStashSet").textContent=h.stash_set?"보관함 개수 고치기":"보관함 개수 입력";
+}
+$("rStashSet").onclick=function(){
+ var cur=hold&&hold.stash!=null?hold.stash:"";
+ var v=prompt("보관함(창고)에 있는 불타는 공포의 정수 개수\n(이후 도우미가 보관함에 옮기는 수는 저절로 더합니다)",cur);
+ if(v===null)return;v=parseInt(v,10);if(isNaN(v)||v<0)return;
+ post("/api/stash",{n:v}).then(function(){setTimeout(loadRuns,300)});
+};
 function loadRuns(){
  if(runsBusy)return;runsBusy=true;
- fetch("/api/runs?t="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){runsBusy=false;runsAt=Date.now();runsErr=false;runs=d.runs||[];var skew=Date.now()/1000-(d.now||Date.now()/1000);
+ fetch("/api/runs?t="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){runsBusy=false;runsAt=Date.now();runsErr=false;runs=d.runs||[];hold=d.hold||null;drawHold();var skew=Date.now()/1000-(d.now||Date.now()/1000);
   runs.forEach(function(r){r._skew=skew});
   var top=runs.length?runs[0].n:0;
   if(seenN!==null)runs.forEach(function(r){if(r.n>seenN&&!r.live)newN[r.n]=1});
@@ -852,11 +898,11 @@ function drawRuns(full){
  if(!full&&!cur)return;
  /* strip: the last 40 runs, oldest first */
  var last=runs.slice(0,40).reverse();
- var mxs=Math.max(lim,Math.max.apply(null,last.map(function(r){return r.live?now-(r._skew||0)-r.start:r.secs}).concat([1])));
+ var mxs=Math.max(lim,Math.max.apply(null,last.map(function(r){return Math.min(lim*1.3,r.live?now-(r._skew||0)-r.start:r.secs)}).concat([1])));
  $("rBars").style.setProperty("--lim",(lim/mxs).toFixed(3));
  $("rBars").innerHTML=last.map(function(r){var s=r.live?now-(r._skew||0)-r.start:r.secs,g=gainOf(r);
   var c=r.live?"lv":r.skip?"sk":g>=3?"v3":g===2?"v2":g===1?"v1":"";
-  return '<button type="button" role="listitem" class="'+c+(openRun===r.n?" sel":"")+'" data-n="'+r.n+'" style="height:'+Math.max(6,100*s/mxs).toFixed(1)+'%" aria-label="'+r.n+"판 "+mss(s)+(r.skip?" 건너뜀":g!=null?" 정수 "+g+"개":"")+'"></button>'}).join("");
+  return '<button type="button" role="listitem" class="'+c+(openRun===r.n?" sel":"")+'" data-n="'+r.n+'" style="height:'+Math.max(6,Math.min(100,100*s/mxs)).toFixed(1)+'%" aria-label="'+r.n+"판 "+mss(s)+(r.skip?" 건너뜀":g!=null?" 정수 "+g+"개":"")+'"></button>'}).join("");
  $("rStripN").textContent=td.length?"오늘 "+td.length+"판"+(skips.length?" (건너뜀 "+skips.length+")":""):"";
  Array.prototype.forEach.call($("rBars").children,function(b){b.onclick=function(){openRun=+b.dataset.n;drawRuns(true);
   var c=document.querySelector('.rc[data-n="'+b.dataset.n+'"]');if(c)c.scrollIntoView({behavior:"smooth",block:"center"})}});

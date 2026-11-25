@@ -314,6 +314,15 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/stash" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        v = int(json.loads(self.rfile.read(min(n, 1024)) or b"{}").get("n"))
+                    except Exception:
+                        return self._send(400, b'{"error":"stash"}', "application/json")
+                    from . import runlog
+                    runlog.set_stash(v)
+                    return self._send(200, json.dumps({"n": v}).encode("utf-8"), "application/json")
                 if u.path == "/api/fastext" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
@@ -376,7 +385,8 @@ class Remote:
                     return self._send(200, json.dumps({"star": star}).encode("utf-8"), "application/json")
                 if u.path == "/api/runs" and method == "GET":
                     from . import runlog
-                    body = json.dumps({"runs": runlog.build(150), "now": time.time()}, ensure_ascii=False)
+                    rs = runlog.build(300)
+                    body = json.dumps({"runs": rs[:150], "hold": runlog.holdings(rs), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/essences" and method == "GET":
                     body = json.dumps(essence_stats(), ensure_ascii=False)
