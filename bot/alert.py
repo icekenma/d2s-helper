@@ -87,8 +87,12 @@ class Watch:
             self.log("휴대폰 알림 %s: %s" % ("보냄" if not e else "실패 (" + e + ")", title))
         threading.Thread(target=go, daemon=True).start()
 
-    def test(self):
-        self._post("D2S 도우미 시험 알림", "이 알림이 보이면 경고 알림이 잘 옵니다.", "default", "bell")
+    def test(self, delay=10):
+        """A test sent after a delay: time to close the ntfy app / lock the phone first (iOS shows no
+        banner for an app that is open on the screen)."""
+        self.log("휴대폰 시험 알림: %d초 뒤에 보냄 (그 사이 ntfy 앱을 닫거나 화면을 끄세요)" % delay)
+        threading.Timer(delay, lambda: self._post("D2S 도우미 시험 알림",
+                                                  "이 알림이 배너로 보이면 경고 알림이 잘 옵니다.", "high", "bell")).start()
 
     def check(self, running, now=None):
         now = now or time.time()

@@ -478,9 +478,10 @@ summary::-webkit-details-marker{display:none}
   <ol class="ahow">
    <li>휴대폰에 <b>ntfy</b> 앱을 설치합니다 (무료, App Store).</li>
    <li>앱에서 + 를 눌러 주제 <b id="aTopic">-</b> 를 구독합니다.</li>
-   <li>아래 '시험 알림'을 눌러 알림이 오는지 확인합니다.</li>
+   <li>'시험 알림'을 누르고 바로 화면을 끄거나 ntfy 앱을 닫습니다. 10초 뒤 배너가 뜨면 성공 (ntfy 앱이 열려 있으면 배너가 안 뜸).</li>
+   <li>안 뜨면 아이폰 설정 > 알림 > ntfy 에서 알림 허용·잠금 화면·배너를 켜고, 집중 모드를 확인합니다.</li>
   </ol>
-  <div class="abtn"><button type="button" id="aTest">시험 알림</button><button type="button" id="aCopy">주제 복사</button></div>
+  <div class="abtn"><button type="button" id="aTest">시험 알림 (10초 뒤)</button><button type="button" id="aCopy">주제 복사</button></div>
  </div>
  <div id="rRows"></div>
  <button class="clear" type="button" id="clearRuns">판 기록 비우기</button>
@@ -609,7 +610,8 @@ function alertDraw(){
  if(AL.warn)w.innerHTML="<b>"+AL.minutes+"분 동안 불타는 정수가 늘지 않았습니다</b>도우미는 켜져 있지만 보스를 잡지 못하고 있습니다. 게임 화면을 확인하세요."+(AL.sent_at?" ("+hm(AL.sent_at)+" 알림 보냄)":"");
 }
 $("aOn").onclick=function(){if(!AL)return;AL.on=!AL.on;alBusy=Date.now()+4000;alertDraw();post("/api/alert",{on:AL.on})};
-$("aTest").onclick=function(){post("/api/alert/test");var b=$("aTest");b.textContent="보냄 · 알림 확인";setTimeout(function(){b.textContent="시험 알림"},3000)};
+$("aTest").onclick=function(){post("/api/alert/test");var b=$("aTest"),n=10;b.disabled=true;
+ (function tick(){b.textContent=n>0?n+"초 뒤 도착 · 화면을 끄세요":"보냄 · 배너 확인";if(n-->0)setTimeout(tick,1000);else setTimeout(function(){b.disabled=false;b.textContent="시험 알림 (10초 뒤)"},4000)})()};
 $("aCopy").onclick=function(){if(!AL)return;var t=AL.topic;
  (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject()).then(function(){$("aCopy").textContent="복사함"},function(){prompt("주제를 복사하세요",t)});
  setTimeout(function(){$("aCopy").textContent="주제 복사"},2500)};

@@ -200,7 +200,7 @@ class App(tk.Tk):
         ttk.Checkbutton(af, text="%d분 동안 정수가 안 늘면 휴대폰 알림" % self.watch.state()["minutes"],
                         variable=self.v_alert,
                         command=lambda: self._set_alert({"on": self.v_alert.get()}, "PC")).pack(side="left", padx=8)
-        ttk.Button(af, text="시험 알림", command=self.watch.test).pack(side="left")
+        ttk.Button(af, text="시험 알림 (10초 뒤)", command=self.watch.test).pack(side="left")
         tk.Label(af, text="ntfy 앱에서 구독: %s" % self.watch.conf["topic"], bg=BG, fg=DIM,
                  font=(FONT, 9)).pack(side="left", padx=10)
 
