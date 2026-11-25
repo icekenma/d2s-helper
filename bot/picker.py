@@ -409,6 +409,9 @@ class Picker:
         self.fast_pick, self.base_kinds = None, set(self.kinds)
         self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
+        self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
+        self.w_resume = False
+        self.g_portal, self.g_n = False, 0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -567,6 +570,9 @@ class Picker:
         self.fast_pick = None
         self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
+        self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last = None, 0.0, 0.0, 0, None
+        self.w_resume = False
+        self.g_portal, self.g_n = False, 0
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -853,7 +859,11 @@ class Picker:
         f = self.io.grab()
         if f is not None:
             norm = geo.normalize(f)
-        n = sum(1 for row in sorter.read_inventory(norm) for v in row if v)
+        inv = sorter.read_inventory(norm)
+        base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+        n = sum(1 for row in inv for v in row if v)
+        self.inv_other = sum(1 for r_, row in enumerate(inv) for c_, v in enumerate(row)
+                             if v and not sorter.essence_cell(norm, c_, r_, base))
         if opened:
             self.io.key("c")
             time.sleep(0.25)
@@ -936,15 +946,21 @@ class Picker:
         return {"set", "unique", "magic", "charm"}
 
     def _gather(self, frame, now):
-        """After the boss the dropped items gather round the character by themselves: wait for that, then
-        click their name labels one by one (nearest first). No minimap, no running around. -> True while busy."""
+        """Steps 1-3 after the boss (the items gather round the character by themselves since the patch):
+        1 boss dead, 2 portal seen, 3 click the item name labels one by one (nearest first); bags full ->
+        the smith, then on. -> True while busy. Every step is logged in detail ([1단계] ... [4단계])."""
         h, w = frame.shape[:2]
         s = (h - self.top) / 600.0
         kinds = self._gather_kinds()
         if self.g_t0 is None:
             self.g_t0 = now
             self.release()
-            self.log("보스 처치: 아이템이 캐릭터 주위로 모이기를 기다림")
+            self.log("[1단계] 보스 처치 확인 (%.1f초 전) - 줍을 색: %s"
+                     % (now - self.over_since, ", ".join(LABEL_KO[k] for k in LABEL_PAL if k in kinds)))
+        if not self.g_portal and self.portal is not None:
+            self.g_portal = True
+            self.log("[2단계] 포탈 확인: 화면 (%d, %d), 보스 처치 %.1f초 뒤" % (self.portal[0], self.portal[1],
+                                                                   now - self.over_since))
         if now - self.g_look < 0.45:
             return True
         self.g_look = now
@@ -954,14 +970,17 @@ class Picker:
         labs = find_item_labels(f, s, kinds)
         waited = now - self.g_t0
         if not self.g_ready:
-            # first wait: the labels must stop moving (same count three looks running) before the first click
+            # wait: the portal, and the labels must stop moving (same count three looks running)
             self.g_stable = self.g_stable + 1 if self.g_seen is not None and len(labs) == self.g_seen else 0
             self.g_seen = len(labs)
-            if waited < GATHER_WAIT[0] or (self.g_stable < 2 and waited < GATHER_WAIT[1]):
+            if (waited < GATHER_WAIT[0] or (self.g_stable < 2 and waited < GATHER_WAIT[1])
+                    or (not self.g_portal and waited < GATHER_WAIT[1])):
                 return True
             self.g_ready = True
-            self.log("아이템 이름표 %d개 (%s)" % (len(labs), ", ".join(
-                "%s %d" % (LABEL_KO[k], sum(1 for l in labs if l[0] == k)) for k in LABEL_PAL if any(l[0] == k for l in labs)) or "없음"))
+            if not self.g_portal:
+                self.log("[2단계] %.0f초 동안 화면에서 포탈을 못 봄: 그래도 줍기 진행" % waited)
+            self.log("[3단계] 아이템이 모임 (%.1f초 기다림): 이름표 %d개 - %s" % (
+                waited, len(labs), "; ".join("%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in labs) or "없음"))
         g = self.g_goal
         if g is not None:
             near = [l for l in labs if l[0] == g[0] and abs(l[1] - g[1]) < 60 * s and abs(l[2] - g[2]) < 14 * s]
@@ -969,18 +988,23 @@ class Picker:
                 self.count += 1
                 self.last_gain = now
                 self.inv_check = None
-                self.log("%s 주움" % LABEL_KO[g[0]])
+                self.log("[3단계] %s 주움 (%.1f초, 이번 판 %d개째, 남은 이름표 %d개)"
+                         % (LABEL_KO[g[0]], now - g[3], self.count, len(labs)))
                 self.g_goal = None
             elif now - g[3] > 3.5:
-                self.g_goal = None                    # not picked up: try another (counts as a try)
+                self.log("[3단계] %s (%d,%d) 3.5초 안에 안 주워짐 (이름표 그대로)" % (LABEL_KO[g[0]], g[1], g[2]))
+                self.g_goal = None
             else:
                 return True
         if self.state.get("inv_full", 0) > max(self.state.get("cleaned", 0), self.g_t0):
-            self.g_done, self.g_full = True, True       # bags full: the smith, then back to the labels
-            self.route_played = True
-            self.inv_check, self.need_smith = now, True
-            self.log("인벤토리가 가득 참: 대장장이에서 정리하고 나머지를 주움")
+            self.g_done = True                         # bags full: the smith, then back to the labels
+            self.release()
+            self.w_stage, self.w_t0, self.w_ref, self.w_resume = "smith", now, self.state.get("cleaned", 0), True
+            self.npc_since, self.gave_up = None, False
+            self.log("[3단계] 인벤토리가 가득 참 (%d개 주운 뒤): 대장장이에서 정리하고 남은 이름표 %d개를 이어서 주움"
+                     % (self.count, len(labs)))
             return False
+
         def key(l):
             return (l[0], int(l[1] // (40 * s)), int(l[2] // (12 * s)))
         todo = [l for l in labs if self.g_tries.get(key(l), 0) < 3]
@@ -990,19 +1014,81 @@ class Picker:
                 return True                            # look once more: labels shift after a pick-up
             self.g_done = True
             self.release()
-            self.log("모인 아이템 줍기 끝: %d개%s" % (self.count, " (시간 다 됨)" if waited > GATHER_MAX else ""))
-            self.inv_check, self.need_smith = now, bool(self.count)
-            if not self.count:
-                self.stage_start = None
+            left = [l for l in labs if self.g_tries.get(key(l), 0) >= 3]
+            self.log("[3단계] 줍기 끝: %d개 주움, %.0f초%s%s" % (
+                self.count, waited, " (최대 %d초 다 됨)" % GATHER_MAX if waited > GATHER_MAX else "",
+                (" - 3번 눌러도 안 주워진 이름표 %d개: %s" % (len(left), "; ".join(
+                    "%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in left))) if left else ""))
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
-            self.route_played = True                   # (normal mode: no route / run-around after this)
-            return False
+            self.route_played = True                   # (no route / run-around after this)
+            self.w_stage, self.w_t0, self.w_rounds, self.w_last = "check", now, 0, None
+            self.log("[4단계] 마무리 확인 시작: 인벤토리에 정수만 있어야 귀환")
+            return True
         self.g_empty = 0
         l = min(todo, key=lambda q: (self.g_tries.get(key(q), 0), (q[1] - w / 2.0) ** 2 + (q[2] - h / 2.0) ** 2))
         self.g_tries[key(l)] = self.g_tries.get(key(l), 0) + 1
+        self.g_n += 1
         if self._world_click(l[1], l[2], portal_ok=True):     # a click on the name picks it up
             self.g_goal = (l[0], l[1], l[2], now)
+            self.log("[3단계] 클릭 %d: %s 이름표 (%d,%d) - %d번째 시도, 화면의 이름표 %d개"
+                     % (self.g_n, LABEL_KO[l[0]], l[1], l[2], self.g_tries[key(l)], len(labs)))
+        else:
+            self.log("[3단계] 클릭 못 함: 게임 위에 창이 열려 있음")
         return True
+
+    def _wrapup(self, frame, now):
+        """Step 4: the bags must hold essences only. Anything else -> the smith (tidy-up by the rules), then
+        look again; done -> Esc -> '저장 후 나가기' -> town. A tidy-up that leaves the same things behind twice
+        (the rules keep them: worn-out reads, reinforced items) ends it too."""
+        h, w = frame.shape[:2]
+        s = (h - self.top) / 600.0
+        st = self.w_stage
+        if st == "check":
+            self.release()
+            n = self._count_inventory()
+            self.frame = None
+            if n < 0:
+                self.log("[4단계] 인벤토리를 열지 못함: 확인 없이 귀환")
+                self.w_stage = "exit"
+                return
+            k = self.inv_other
+            self.log("[4단계] 인벤토리 확인: %d칸 사용 - 정수 %d칸, 그 외 %d칸" % (n, n - k, k))
+            if k == 0:
+                self.log("[4단계] 정수만 남음: 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
+                self.w_stage = "exit"
+            elif self.w_rounds >= 3 or (self.w_last is not None and k >= self.w_last):
+                self.log("[4단계] 정리 뒤에도 정수 외 %d칸이 남음 (정리 규칙상 두는 아이템으로 봄, 정리 %d번): 귀환"
+                         % (k, self.w_rounds))
+                self.w_stage = "exit"
+            else:
+                self.w_rounds += 1
+                self.w_last = k
+                self.w_stage, self.w_t0, self.w_ref = "smith", now, self.state.get("cleaned", 0)
+                self.npc_since, self.gave_up = None, False
+                self.log("[4단계] 정수 외 %d칸 -> 대장장이에게 가서 정리 (%d번째)" % (k, self.w_rounds))
+            return
+        if st == "smith":
+            if self.state.get("cleaned", 0) > self.w_ref:
+                self.release()
+                if self.w_resume:
+                    self.w_resume, self.w_stage = False, None
+                    self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
+                    self.log("[3단계] 대장장이 정리 끝 (%.0f초): 남은 아이템 이어서 줍기" % (now - self.w_t0))
+                    return
+                self.log("[4단계] 대장장이 정리 끝 (%.0f초): 인벤토리 다시 확인" % (now - self.w_t0))
+                self.w_stage = "check"
+                return
+            if now - self.w_t0 > 75:
+                self.log("[%s단계] 75초 동안 대장장이 창을 열지 못함: 정리 없이 귀환" % ("3" if self.w_resume else "4"))
+                self.w_stage, self.w_resume = "exit", False
+                return
+            self._go_smith(frame, s, now, (0.0, 0.0), self.portal, None, "[4단계] 인벤토리 정리")
+            return
+        if st == "exit":
+            self.release()
+            if self.exit_tries < 6:
+                self._exit_town(now, "[4단계] Esc -> 저장 후 나가기 -> 마을 (파밍 %d개, 정리 %d번, %.0f초)"
+                                % (self.count, self.w_rounds, now - (self.over_since or now)))
 
     def _fast_kinds(self):
         """패스트 모드 extras switched on: the minimap markers to go for after the boss."""
@@ -1544,10 +1630,9 @@ class Picker:
                 if self.exit_tries < 6:
                     self._exit_town(now, "패스트 모드: 줍기 끝 -> Esc로 마을로 가서 다음 판")
                 return
-        if self.g_done and self.g_full and self.state.get("cleaned", 0) > (self.g_t0 or 0):
-            self.g_done, self.g_full, self.g_empty, self.g_goal = False, False, 0, None    # tidied: on picking up
-            self.npc_since, self.inv_check = None, None
-            self.release()
+        if self.over_since is not None and self.w_stage:
+            self._wrapup(frame, now)
+            return
         if self.over_since is not None and not self.forced and not self.g_done and self._gather_kinds():
             if self._gather(frame, now):
                 return
