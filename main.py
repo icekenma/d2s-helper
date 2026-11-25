@@ -170,6 +170,14 @@ class App(tk.Tk):
         tk.Label(sf, text="m (캐릭터 키 2m 기준, 상하좌우)", bg=BG, fg=DIM,
                  font=(FONT, 9)).pack(side="left")
 
+        ff = tk.Frame(self, bg=BG)
+        ff.pack(fill="x", padx=20, pady=(0, 10))
+        self.v_fast = tk.BooleanVar(value=bool(self.cfg.get("fast_mode", False)))
+        ttk.Checkbutton(ff, text="패스트 모드", variable=self.v_fast,
+                        command=lambda: self._set_fast(self.v_fast.get(), "PC")).pack(side="left")
+        tk.Label(ff, text="아이템을 줍지 않고 보스를 잡으면 바로 Esc로 마을 -> 다음 판 (정수는 저절로 들어옴)",
+                 bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
+
         kf = tk.Frame(self, bg=BG)
         kf.pack(fill="x", padx=20, pady=(0, 10))
         tk.Label(kf, text="방향키 녹음", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
@@ -315,6 +323,21 @@ class App(tk.Tk):
                 self.picker.p.wp_frontier = False
         self._say("휴대폰에서 단계 변경: %s" % ("공포 영역 %d단계 반복 (다음 판부터)" % stage if stage
                                            else "단계 미지정 (목록 맨 위 새 단계)"))
+        self._share()
+
+    def _set_fast(self, on, who="휴대폰"):
+        """패스트 모드: no pick-up, no route, no smith; after the boss Esc -> town -> next run."""
+        on = bool(on)
+        self.cfg["fast_mode"] = on
+        save_cfg(self.cfg)
+        try:
+            self.v_fast.set(on)
+        except Exception:
+            pass
+        if self.picker is not None and getattr(self.picker, "p", None) is not None:
+            self.picker.p.opts["fast_mode"] = on
+        self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판 (아이템 줍기·정리 안 함)" if on
+                                            else "끔: 녹음 경로·줍기·대장장이 정리를 다시 함"))
         self._share()
 
     def _gear_scan(self):
@@ -503,7 +526,8 @@ class App(tk.Tk):
         left = self._stage_left()
         self.shared = {"stage_left": left, "stage_limit": STAGE_LIMIT, "running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
-                       "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0)}
+                       "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
+                       "fast": bool(self.cfg.get("fast_mode", False))}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -516,6 +540,7 @@ class App(tk.Tk):
                                  io_lock=self.io_lock, title=TITLE)
             self.remote.set_stage = lambda n: self.q.put(("stage", n))
             self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
+            self.remote.set_fast = lambda on: self.q.put(("fast", on))
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -582,7 +607,7 @@ class App(tk.Tk):
         ecfg["always_town"] = stage > 0
         if self.keys.recording:
             self.rec_toggle()
-        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, route=list(self.keys.events))   # a recording replaces the screen sweep
+        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events))   # a recording replaces the screen sweep
         self._say("공포 영역 %d단계만 반복" % stage if stage else "단계 미지정: 목록 맨 위의 새로 열린 단계로 진행")
         self.engine = Engine(ecfg, BASE, emit, self.io_lock, state)
         self.engine.start()
@@ -629,6 +654,8 @@ class App(tk.Tk):
                         self.l_runs.configure(text=str(self.runs))
                 elif kind == "stage":
                     self._set_stage(int(p or 0))
+                elif kind == "fast":
+                    self._set_fast(p)
                 elif kind == "keep_star":
                     n = max(1, min(5, int(p or 1)))
                     scorer.set_min_star(n)

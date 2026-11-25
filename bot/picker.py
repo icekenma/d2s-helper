@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Collects set / unique / jewel markers from the minimap and labelled floor loot after the boss,
 then smith and portal; uses the waypoint in town. Walks by mouse clicks (or the arrow keys)."""
+import os
 import threading
 import time
 
@@ -361,6 +362,7 @@ class Picker:
         self.nomap_note, self.nomap_since, self.hunt_tab, self.hunt_tab_at = 0.0, None, 0, 0.0
         self.town_fix, self.town_fix_n = 0.0, 0
         self.title_at, self.title_click = 0.0, 0.0
+        self.fast_counted = False
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -511,6 +513,7 @@ class Picker:
         self.sweep_pts, self.sweep_done = None, False
         self.ss_done, self.ss_home, self.tab_tried, self.ss_pts = False, None, 0, None
         self.nomap_since, self.hunt_tab = None, 0
+        self.fast_counted = False
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
         self.ess_mem, self.ess_note = [], 0.0
@@ -849,7 +852,46 @@ class Picker:
             return
         self._portal_now(frame, s, now, me, portal, mark)
 
-    def _exit_town(self, now):
+    def _fast_count(self):
+        """패스트 모드: open the inventory, read the burning-essence stacks, close it again."""
+        frame = self.io.grab()
+        if frame is None:
+            return
+        geo = sorter.Geo(frame)
+        opened = False
+        if sorter.seen(geo.normalize(frame), "inv") < 0.7:
+            self.io.key("c")
+            opened = True
+        norm = None
+        for _ in range(8):
+            time.sleep(0.15)
+            f = self.io.grab()
+            if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
+                norm = geo.normalize(f)
+                break
+        if norm is not None:
+            self.io.move(*geo.raw(*sorter.PARK))
+            time.sleep(0.12)
+            f = self.io.grab()
+            if f is not None:
+                norm = geo.normalize(f)
+            snap, bad = sorter.read_burning(self.io, geo, norm, os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
+            if bad:
+                self.log("패스트 모드: 불타는 정수 묶음 %d개의 수량을 읽지 못함 (게임 창이 뒤에 있으면 정보창이 안 뜸)" % bad)
+            else:
+                sorter.record_essences(snap, set())
+                self.log("패스트 모드: 불타는 정수 인벤토리에 %d개" % sum(snap.values()))
+        else:
+            self.log("패스트 모드: 인벤토리가 열리지 않아 정수를 세지 못함")
+        if opened:
+            self.io.key("c")
+            time.sleep(0.25)
+            f = self.io.grab()
+            if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
+                self.io.key(Key.esc)
+                time.sleep(0.2)
+
+    def _exit_town(self, now, first="창고 정리 끝: Esc로 마을로 가서 다음 판"):
         """Esc -> "저장 후 나가기": back to town, where the waypoint starts the next run."""
         if now - self.exit_at < 4.0:
             return
@@ -857,7 +899,7 @@ class Picker:
         self.exit_tries += 1
         self.release()
         if self.exit_tries == 1:
-            self.log("창고 정리 끝: Esc로 마을로 가서 다음 판")
+            self.log(first)
         if sorter.leave_via_menu(self.io, self.log, lambda: self.io.key(Key.esc),
                                  {"down": Key.down, "up": Key.up, "enter": Key.enter, "tab": Key.tab},
                                  attempt=self.exit_tries):
@@ -1220,6 +1262,20 @@ class Picker:
                     gearscan.scan_skills(self.io, self.log)
                 except Exception as e:
                     self.log("스킬 스캔 오류: %s" % e)
+                return
+        if self.opts.get("fast_mode") and self.over_since is not None and not self.forced:
+            # 패스트 모드: the essences come into the bags by themselves when the boss dies. Pick up
+            # nothing, no route, no smith: count the burning essences, then Esc -> town -> next run.
+            self.release()
+            if now - self.over_since < 2.0:
+                return
+            if not self.fast_counted:
+                self.fast_counted = True
+                self._fast_count()
+                self.frame = None
+                return
+            if self.exit_tries < 6:
+                self._exit_town(now, "패스트 모드: 보스 처치 -> Esc로 마을로 가서 다음 판")
                 return
         if self._route(now):
             return

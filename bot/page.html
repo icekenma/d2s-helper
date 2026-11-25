@@ -68,6 +68,19 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 .cd.low .cdbar i{background:linear-gradient(90deg,var(--blood),var(--blood2))}
 .cd.idle .num{color:var(--dim)}
 
+/* fast mode switch: essences only, straight to the next run */
+.fast{display:flex;align-items:center;gap:14px;width:100%;border:0;text-align:left;font:inherit;color:var(--bone);
+ padding:13px 14px;border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.fast .ft{flex:1;min-width:0}
+.fast .ft b{display:block;font-size:14px}
+.fast .ft span{display:block;font-size:12px;color:var(--ash);margin-top:2px}
+.fast .sw{flex:none;width:50px;height:30px;border-radius:15px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);position:relative;transition:background .2s}
+.fast .sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--dim);transition:transform .2s,background .2s}
+.fast[aria-checked=true]{background:linear-gradient(160deg,#2c2316,var(--iron));box-shadow:inset 0 0 0 1px rgba(210,163,74,.55)}
+.fast[aria-checked=true] .sw{background:rgba(210,163,74,.35)}
+.fast[aria-checked=true] .sw i{transform:translateX(20px);background:var(--gold2)}
+.fast[aria-checked=true] .ft span{color:var(--gold)}
+@media (prefers-reduced-motion:reduce){.fast .sw,.fast .sw i{transition:none}}
 /* stage to repeat */
 .stage{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 12px;padding:12px 14px;border-radius:var(--r);
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
@@ -334,6 +347,10 @@ summary::-webkit-details-marker{display:none}
    <button type="button" class="apply" id="stApply" disabled>적용</button>
    <span class="note" id="stNote">0은 목록 맨 위 새 단계</span>
   </div>
+  <button type="button" class="fast" id="fastBtn" role="switch" aria-checked="false">
+   <span class="ft"><b>패스트 모드</b><span id="fastSub">보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함</span></span>
+   <span class="sw" aria-hidden="true"><i></i></span>
+  </button>
   <div class="screen empty" id="screen" aria-label="게임 화면. 누르면 그 자리 클릭, 길게 누르면 그쪽으로 계속 달림">
    <img id="live" alt="">
    <div class="wait" id="wait">게임 화면을 불러오는 중</div>
@@ -379,7 +396,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 /* status */
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -388,6 +405,12 @@ function status(){
   $("log").textContent=(s.log||[]).slice().reverse().join("\n");
  }).catch(function(){$("stb").textContent="PC와 연결이 끊김";$("sts").textContent="도우미가 켜져 있는지 확인하세요"});
 }
+/* fast mode: one tap, sent at once; the PC's value shows otherwise */
+var fastOn=false,fastBusy=0;
+function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));
+ $("fastSub").textContent=fastOn?"켜짐: 보스를 잡으면 Esc로 바로 다음 판 · 정수만 모음":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
+function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+$("fastBtn").onclick=function(){fastOn=!fastOn;fastBusy=Date.now()+4000;fastDraw();post("/api/fast",{on:fastOn}).catch(function(){})};
 /* stage to repeat: edited here, sent with 적용; the PC's value shows when nothing is being edited */
 var stageNow=null,stageDirty=false;
 function stageVal(){var v=parseInt($("stNum").value,10);return isNaN(v)?0:Math.max(0,Math.min(99,v))}

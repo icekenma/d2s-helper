@@ -299,6 +299,16 @@ class Remote:
                     if cb:
                         cb(stage)
                     return self._send(200, json.dumps({"stage": stage}).encode("utf-8"), "application/json")
+                if u.path == "/api/fast" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        on = bool(json.loads(self.rfile.read(min(n, 1024)) or b"{}").get("on"))
+                    except Exception:
+                        return self._send(400, b'{"error":"fast"}', "application/json")
+                    cb = getattr(remote, "set_fast", None)
+                    if cb:
+                        cb(on)
+                    return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
                 if u.path in ("/api/sort", "/api/scan") and method == "POST":
                     remote.sort()                # (this slot now starts the gear scan)
                     return self._send(200, b"{}", "application/json")

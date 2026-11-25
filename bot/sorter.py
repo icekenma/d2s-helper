@@ -227,6 +227,45 @@ def burning_cell(norm, col, row):
     return red >= 0.07 and blue < 0.04
 
 
+def read_burning(io, geo, norm, base_dir):
+    """With the inventory open: the count of every 불타는 공포의 정수 stack in it (hover -> info box).
+    -> ({cell key: count}, number of stacks whose count could not be read)"""
+    from . import scorer
+    snap, bad = {}, 0
+    inv = read_inventory(norm)
+    for r in range(INV_ROWS):
+        for c in range(INV_COLS):
+            if not inv[r][c] or not essence_cell(norm, c, r, base_dir) or not burning_cell(norm, c, r):
+                continue
+            io.move(*geo.raw(*PARK))
+            time.sleep(0.12)
+            base = io.grab()
+            io.move(*geo.raw(INV_X + CELL * c + CELL // 2, INV_Y + CELL * r + CELL // 2))
+            q = None
+            for _ in range(3):
+                time.sleep(0.18)
+                hov = io.grab()
+                if base is None or hov is None:
+                    continue
+                tip = tooltip_crop(base, hov, geo)
+                if tip is None:
+                    continue
+                try:
+                    ev = scorer.evaluate(tip, geo.s)
+                except Exception:
+                    ev = None
+                if ev:
+                    q = ev.get("qty") if ev.get("qty") is not None else ev.get("qty_raw")
+                if q is not None:
+                    break
+            if q is None:
+                bad += 1
+            else:
+                snap["불타는 정수 %d,%d" % (c + 1, r + 1)] = int(q)
+    io.move(*geo.raw(*PARK))
+    return snap, bad
+
+
 def run_ended(norm, base_dir):
     """How strongly the lower half shows the run-end hint 'ENTER: 다시 하기' (gold lettering). After a
     death in a new stage the hint reads 'ENTER: 공포 영역 N' instead, so 'ENTER:' alone counts too."""
