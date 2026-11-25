@@ -278,6 +278,33 @@ LOOT_SEARCH = ["정수", "열쇠", "부적"]      # floor items without a minima
 EXPLORE = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (-1, -1), (1, -1)]
 
 
+
+ROUTE_IDLE_MAX = 1.5     # s: a longer pause with no key held is cut short (the recording was left running)
+ROUTE_MAX = 90.0         # s: never play longer than this
+
+
+def squeeze_route(events):
+    """-> (events, seconds cut): pauses with nothing held shortened, nothing before the first key, at most
+    ROUTE_MAX long. Moves themselves keep their exact timing."""
+    out, held, shift, prev = [], set(), 0.0, None
+    for t, kind, name in events:
+        t = float(t)
+        if prev is None:
+            shift = t - 0.1
+        elif not held and t - prev > ROUTE_IDLE_MAX:
+            shift += (t - prev) - 0.3
+        prev = t
+        nt = t - shift
+        if nt > ROUTE_MAX:
+            break
+        out.append((nt, kind, name))
+        if kind == "down":
+            held.add(name)
+        else:
+            held.discard(name)
+    total = float(events[-1][0]) if events else 0.0
+    return out, max(0.0, total - (out[-1][0] if out else 0.0))
+
 class Picker:
     """Call step() several times a second from one thread; call release() when stopping.
 
@@ -331,6 +358,7 @@ class Picker:
         self.pos, self.odo_prev, self.odo_win, self.goal_mm, self.click_pos, self.click_mm = None, None, None, (0.0, 0.0), None, (0.0, 0.0)
         self.why, self.why_since, self.why_note = "", 0.0, 0.0
         self.portal_first, self.portal_last, self.target_seen = 0.0, 0.0, 0.0
+        self.nomap_note = 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -1008,8 +1036,14 @@ class Picker:
                 self.log("녹음된 방향키가 있음: 보스 처치 3초 뒤에 재생 (그 녹음으로만 이동)")
             return True
         self.release()
-        self.log("녹음된 방향키 재생 시작 (%d번 누름, %.1f초)" % (sum(1 for e in events if e[1] == "down"),
-                                                         events[-1][0]))
+        events, cut = squeeze_route(events)
+        if not events:
+            self.route_played = True
+            self.log("녹음된 방향키에 누른 키가 없음: 녹음 없이 진행")
+            return False
+        self.log("녹음된 방향키 재생 시작 (%d번 누름, %.1f초%s)" % (
+            sum(1 for e in events if e[1] == "down"), events[-1][0],
+            ", 키를 안 누른 빈 시간 %.0f초는 건너뜀" % cut if cut >= 1 else ""))
         stop = getattr(self, "stop_flag", None)
         # exact timing: the screen is watched on another thread so a key is never let go late
         # (a late key-up = running too far, which is what made the route drift)
@@ -1215,7 +1249,22 @@ class Picker:
                     self.idle_since = now
                 self._finish(frame, s, now, (0.0, 0.0), portal, None)
                 return
+            if self.over_since is None and portal is not None and (not self.terror_ever or now - self.terror_last < 5):
+                # no minimap to read and the boss notice was missed: a portal standing on screen ends the hunt
+                if now - self.portal_last > 1.0:
+                    self.portal_first = now
+                self.portal_last = now
+                if now - self.portal_first >= 5.0:
+                    self.over_since = now
+                    self.last_gain = now
+                    self.state["over"] = True
+                    self.state["over_at"] = now
+                    self.log("미니맵은 못 읽었지만 화면에 포탈이 계속 보여 사냥 종료로 판단")
+                    return
             if self.over_since is None:
+                if self.terror_ever and now - self.nomap_note > 60:
+                    self.nomap_note = now
+                    self.log("사냥 중: 미니맵에서 내 위치를 못 찾음 (보스 처치 문구를 기다리는 중)")
                 self._town(frame, s, now, None)
             return
         if self.over_since is None:
