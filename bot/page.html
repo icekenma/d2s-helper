@@ -468,8 +468,7 @@ summary::-webkit-details-marker{display:none}
   <div class="sh"><b>최근 판</b><span id="rStripN"></span></div>
   <div class="bars" id="rBars" role="list" aria-label="최근 판: 높이는 걸린 시간, 색은 정수 개수"></div>
   <div class="legend"><span><i style="background:var(--ember2)"></i>정수 3개+</span><span><i style="background:var(--ember)"></i>2개</span>
-   <span><i style="background:var(--gold)"></i>1개</span><span><i style="background:repeating-linear-gradient(135deg,#3f362e 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1px #3f362e"></i>건너뜀</span>
-   <span><i style="border-top:1px dashed var(--blood2);height:0;border-radius:0"></i>판 시간 제한</span></div>
+   <span><i style="background:var(--gold)"></i>1개</span>   <span><i style="border-top:1px dashed var(--blood2);height:0;border-radius:0"></i>판 시간 제한</span></div>
  </div>
  <div class="ins" id="rIns"></div>
  <div class="alrt" id="aBox">
@@ -909,8 +908,10 @@ function rollEss(to){
  cancelAnimationFrame(essAnim);
  (function step(t){var p=Math.min(1,(t-t0)/900);el.textContent=Math.round(from+k*(1-Math.pow(1-p,3)));if(p<1)essAnim=requestAnimationFrame(step)})(t0);
 }
+function runShown(r){return r.live||(!r.skip&&!(r.boss_secs==null&&r.secs<20))}   /* skipped / blink runs: hidden */
+function number(){var k=0;for(var i=runs.length-1;i>=0;i--){var r=runs[i];r.no=runShown(r)?++k:null}}
 function drawRuns(full){
- freshDraw();
+ freshDraw();number();
  var now=Date.now()/1000,lim=CD.limit||240,cur=runs.length&&runs[0].live?runs[0]:null;
  var t0=new Date();t0.setHours(0,0,0,0);t0=t0.getTime()/1000;
  var td=runs.filter(function(r){return r.start>=t0});
@@ -924,7 +925,7 @@ function drawRuns(full){
   $("rClk").textContent=mss(el);$("rOf").textContent="제한 "+mss(lim);
   var bt=$("rBoss");
   if(cur.boss_secs!=null){var a=2*Math.PI*Math.min(1,cur.boss_secs/lim);bt.setAttribute("cx",(64+54*Math.cos(a)).toFixed(1));bt.setAttribute("cy",(64+54*Math.sin(a)).toFixed(1));bt.style.display=""}else bt.style.display="none";
-  $("rHd").textContent=cur.n+"판째 사냥 중";
+  $("rHd").textContent=(cur.no||cur.n)+"판째 사냥 중";
   var ln=[];
   if(cur.act)ln.push('<span class="pill'+(cur.act===3||cur.act===4?" hot":"")+'">'+cur.act+"막</span>");
   ln.push('<span class="pill dim">공포 '+(cur.stage||"-")+"단계</span>");
@@ -951,13 +952,13 @@ function drawRuns(full){
   :"보스를 잡은 판의 막·단계, 또는 인벤토리 수량으로 셉니다";
  if(!full&&!cur)return;
  /* strip: the last 40 runs, oldest first */
- var last=runs.slice(0,40).reverse();
+ var last=runs.filter(runShown).slice(0,40).reverse();
  var mxs=Math.max(lim,Math.max.apply(null,last.map(function(r){return Math.min(lim*1.3,r.live?now-(r._skew||0)-r.start:r.secs)}).concat([1])));
  $("rBars").style.setProperty("--lim",(lim/mxs).toFixed(3));
  $("rBars").innerHTML=last.map(function(r){var s=r.live?now-(r._skew||0)-r.start:r.secs,g=gainOf(r);
   var c=r.live?"lv":r.skip?"sk":g>=3?"v3":g===2?"v2":g===1?"v1":"";
-  return '<button type="button" role="listitem" class="'+c+(openRun===r.n?" sel":"")+'" data-n="'+r.n+'" style="height:'+Math.max(6,Math.min(100,100*s/mxs)).toFixed(1)+'%" aria-label="'+r.n+"판 "+mss(s)+(r.skip?" 건너뜀":g!=null?" 정수 "+g+"개":"")+'"></button>'}).join("");
- $("rStripN").textContent=td.length?"오늘 "+td.length+"판"+(skips.length?" (건너뜀 "+skips.length+")":""):"";
+  return '<button type="button" role="listitem" class="'+c+(openRun===r.n?" sel":"")+'" data-n="'+r.n+'" style="height:'+Math.max(6,Math.min(100,100*s/mxs)).toFixed(1)+'%" aria-label="'+(r.no||r.n)+"판 "+mss(s)+(r.skip?" 건너뜀":g!=null?" 정수 "+g+"개":"")+'"></button>'}).join("");
+ $("rStripN").textContent=td.filter(runShown).length?"오늘 "+td.filter(runShown).length+"판":"";
  Array.prototype.forEach.call($("rBars").children,function(b){b.onclick=function(){openRun=+b.dataset.n;drawRuns(true);
   var c=document.querySelector('.rc[data-n="'+b.dataset.n+'"]');if(c)c.scrollIntoView({behavior:"smooth",block:"center"})}});
  /* insights */
@@ -969,7 +970,7 @@ function drawRuns(full){
  var stg=(cur||runs[0]||{}).stage||0,bonus=Math.floor(stg/50),T=avg||150,be=0.4*T/(1.4+bonus);
  var acts=td.filter(function(r){return r.act}),hot=acts.filter(function(r){return r.act===3||r.act===4}).length;
  $("rIns").innerHTML=
-  '<div class="gold"><span>판당 평균</span><b>'+(avg!=null?mss(avg):"–")+"</b><small>"+(fast?"최고 "+mss(fast.secs)+" ("+fast.n+"판)":"건너뛴 판 빼고")+"</small></div>"+
+  '<div class="gold"><span>판당 평균</span><b>'+(avg!=null?mss(avg):"–")+"</b><small>"+(fast?"최고 "+mss(fast.secs)+" ("+(fast.no||fast.n)+"판)":"건너뛴 판 빼고")+"</small></div>"+
   '<div><span>보스까지</span><b>'+(boss!=null?mss(boss):"–")+"</b><small>"+(cl.length?"보스 잡은 "+cl.length+"판 평균":"보스 처치 시각을 기다리는 중")+"</small></div>"+
   '<div class="'+(skAvg==null?"":skAvg<=be?"good":"bad")+'"><span>건너뛰기 한 번</span><b>'+(skAvg!=null?mss(skAvg):"–")+"</b><small>"+
    (skAvg!=null?(skAvg<=be?"이득 · ":"손해 · ")+mss(be)+" 넘으면 손해":"이득 기준 "+mss(be)+" 이하")+"</small></div>"+
@@ -977,14 +978,13 @@ function drawRuns(full){
  /* cards */
  if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 카드가 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}
  var html="";
- runs.slice(0,150).forEach(function(r){
+ runs.filter(runShown).slice(0,150).forEach(function(r){
   var dur=r.live?now-(r._skew||0)-r.start:r.secs,g=gainOf(r);
-  if(r.skip&&!r.live){html+='<div class="rs"><span class="ar">↷</span><span>'+(typeof r.skip==="number"&&r.skip?r.skip+"막":"1·2막")+" 건너뜀</span><b>"+mss(dur)+"</b><time>"+hm(r.start)+"</time></div>";return}
   var fl="";if(g)for(var i=0;i<Math.min(g,5);i++)fl+='<span class="flame"></span>';
   var items=r.items||[],ed=items.filter(function(x){return x.ed});
   html+='<button type="button" class="rc'+(r.live?" live":"")+(dur>lim?" over":"")+(newN[r.n]?" new":"")+'" data-n="'+r.n+'" aria-expanded="'+(openRun===r.n)+'">'+
    '<span class="shield a'+(r.act||0)+'">'+ROMAN[r.act||0]+"</span>"+
-   '<span class="mid"><span class="t1">'+r.n+"판 <em>"+hm(r.start)+" · "+mss(dur)+(r.live?" 진행 중":"")+"</em></span>"+
+   '<span class="mid"><span class="t1">'+(r.no||r.n)+"판 <em>"+hm(r.start)+" · "+mss(dur)+(r.live?" 진행 중":"")+"</em></span>"+
    '<span class="tl"><i style="width:'+Math.min(100,100*dur/lim).toFixed(1)+'%"></i>'+(r.boss_secs!=null?'<b style="left:'+Math.min(99,100*r.boss_secs/lim).toFixed(1)+'%"></b>':"")+"</span>"+
    '<span class="t2">공포 '+(r.stage||"-")+"단계"+(r.boss_secs!=null?" · 보스 "+mss(r.boss_secs):r.live?"":" · 보스 못 잡음")+(items.length?" · 아이템 "+items.length+"개":"")+(ed.length?" · 증뎀 "+ed.length:"")+"</span></span>"+
    '<span class="gain"><span class="fl">'+fl+'</span><span class="gn'+(g==null?" z":r.ess==null?" guess":"")+'">'+(g==null?(r.live?"":"–"):(r.ess==null?"약 ":"")+g+"개")+"</span></span></button>";
