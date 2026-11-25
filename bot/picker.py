@@ -359,6 +359,7 @@ class Picker:
         self.why, self.why_since, self.why_note = "", 0.0, 0.0
         self.portal_first, self.portal_last, self.target_seen = 0.0, 0.0, 0.0
         self.nomap_note, self.nomap_since, self.hunt_tab, self.hunt_tab_at = 0.0, None, 0, 0.0
+        self.town_fix, self.town_fix_n = 0.0, 0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -672,8 +673,21 @@ class Picker:
                     self.wp_time = now
                     self.log("마을: 웨이포인트(파란 불꽃) 클릭")
                 return
-        # no waypoint in view: walk around the town a little to bring it on screen
-        if me is None or now - self.town_since < 5 or now - self.wp_time < 4:
+        # no waypoint in view: walk around the town a little to bring it on screen (the minimap is not
+        # needed for that: the walk goes by the arrow keys)
+        if now - self.town_since < 5 or now - self.wp_time < 4:
+            return
+        if now - self.town_since > 25 and now - self.town_fix > 30:
+            # long without a waypoint in view: a window or the big map may be covering the town
+            self.town_fix = now
+            self.release()
+            if sorter.seen(sorter.Geo(frame).normalize(frame), "panel") >= 0.8:
+                self.io.key(Key.esc)
+                self.log("마을: 25초 넘게 웨이포인트가 안 보임 - Esc로 열린 창 닫기")
+            else:
+                self.io.key(Key.tab)
+                self.log("마을: 25초 넘게 웨이포인트가 안 보임 - Tab으로 지도 표시 바꿔 봄")
+            self.town_fix_n += 1
             return
         if now - self.explore_at >= 1.6:
             self.explore_at = now
