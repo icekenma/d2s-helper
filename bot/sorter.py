@@ -303,6 +303,47 @@ def read_act(frame, top, base_dir):
 
 
 ACT_SCALES = (0.94, 0.97, 1.0, 1.03, 1.06)
+_banner = {}
+BANNER_MAK_NEED = 0.62      # the '막' of the big "N막" shown in the middle when a run starts
+BANNER_NEED, BANNER_GAP = 0.72, 0.1
+
+
+def _tophat(gray):
+    return cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+
+
+def read_banner(frame, base_dir):
+    """The big "N막" in the middle of the screen for the first seconds of a run (a much larger digit
+    than the run info's). -> (act or None, scores). Bright strokes only (top-hat), so the scene behind
+    them hardly matters."""
+    if not _banner:
+        try:
+            with open(os.path.join(base_dir, "assets", "act_banner.json"), "r", encoding="utf-8") as f:
+                d = json.load(f)
+            _banner["mak"] = np.array(d["mak"], np.float32)
+            _banner["digits"] = [(int(k), np.array(v, np.float32)) for k, v in d["digits"].items()]
+        except (OSError, ValueError, KeyError):
+            _banner["mak"] = None
+    if _banner.get("mak") is None:
+        return None, {}
+    norm = Geo(frame).normalize(frame)
+    th = _tophat(cv2.cvtColor(norm[140:225, 320:490], cv2.COLOR_BGR2GRAY).astype(np.float32))
+    r = cv2.matchTemplate(th, _banner["mak"], cv2.TM_CCOEFF_NORMED)
+    _, v, _, (mx, my) = cv2.minMaxLoc(r)
+    if not np.isfinite(v) or v < BANNER_MAK_NEED:
+        return None, {}
+    win = th[max(0, my - 2):my + 42, max(0, mx - 30):mx + 2]
+    sc = {}
+    for lab, t in _banner["digits"]:
+        if win.shape[0] < t.shape[0] or win.shape[1] < t.shape[1]:
+            continue
+        x = cv2.minMaxLoc(cv2.matchTemplate(win, t, cv2.TM_CCOEFF_NORMED))[1]
+        sc[lab] = float(x) if np.isfinite(x) else 0.0
+    if not sc:
+        return None, {}
+    order = sorted(sc, key=lambda k: -sc[k])
+    act = order[0] if sc[order[0]] >= BANNER_NEED and (len(order) < 2 or sc[order[0]] - sc[order[1]] >= BANNER_GAP) else None
+    return act, sc
 
 
 def _act_at(crop, s):

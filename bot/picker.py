@@ -369,7 +369,7 @@ class Picker:
         self.reset_seen = float(state.get("run_reset", 0) or 0) if state else 0.0
         self.fast_counted = False
         self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
-        self.act_name = ""
+        self.act_name, self.banner_votes = "", []
         self.fast_pick, self.base_kinds = None, set(self.kinds)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -887,52 +887,62 @@ class Picker:
         return {k for k, on in (("jewel", o.get("fast_jewel")), ("unique", o.get("fast_unique"))) if on}
 
     def _act_check(self, frame, now):
-        """패스트 모드: read the act of the new run a few times; acts 3 and 4 give two essences."""
+        """Read the act of the new run a few times (acts 3 and 4 give two essences). Two pictures: the big
+        "N막" in the middle of the screen for the first seconds, and the run info at the top right.
+        패스트 모드 leaves acts 1 / 2 / 5 at once; otherwise the act is only noted for the run table."""
+        base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
         if self.act_t0 is None:
-            self.act_t0, self.act_votes = now, []
+            self.act_t0, self.act_votes, self.banner_votes = now, [], []
         try:
-            act, sc = sorter.read_act(frame, self.top, os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
+            act, sc = sorter.read_act(frame, self.top, base)
         except Exception:
             act, sc = None, {}
         if sc:
             self.act_votes.append(act if act else (0 if max(sc.values()) < 0.7 else None))
+        try:
+            ba, _bs = sorter.read_banner(frame, base)
+        except Exception:
+            ba = None
+        if ba:
+            self.banner_votes.append(ba)
         v = [x for x in self.act_votes if x is not None]
         good = sum(1 for x in v if x in (3, 4))
         # leaving needs the same act 1 / 2 / 5 read clearly three times: an unclear reading (0) never
         # counts, so a 4 that was hard to read once is played rather than left
         bad = max([v.count(k) for k in (1, 2, 5)] or [0])
-        if not self.opts.get("fast_mode"):
-            # not 패스트 모드: only noted for the run table, never left for
-            known = [x for x in v if x]
-            if len(known) >= 2 and known.count(max(set(known), key=known.count)) >= 2:
-                self.act_done = True
-                runlog.tag("act", max(set(known), key=known.count))
-            elif now - self.act_t0 > 7:
-                self.act_done = True
-            return
-        if good >= 2:
+        bv = self.banner_votes
+        banner = bv[-1] if len(bv) >= 2 and bv[-1] == bv[-2] else None      # the big digit, twice in a row
+        fast = self.opts.get("fast_mode")
+        if banner in (3, 4) or (banner is None and good >= 2):
+            a = banner or max((3, 4), key=lambda k: v.count(k))
             self.act_done, self.reroll_n = True, 0
-            a = max((3, 4), key=lambda k: v.count(k))
             runlog.tag("act", a)
-            self.log("패스트 모드: %d막 - 이 판 진행 (정수 2개)" % a)
-        elif bad >= 3 and good == 0:
+            if fast:
+                self.log("패스트 모드: %d막 - 이 판 진행 (정수 2개)" % a)
+        elif (banner in (1, 2, 5) and good == 0) or (banner is None and bad >= 3 and good == 0):
+            k = banner or max((1, 2, 5), key=v.count)
             self.act_done = True
-            k = max((1, 2, 5), key=v.count)
             self.act_name = "%d막" % k
-            runlog.tag("act", k or None)
+            runlog.tag("act", k)
+            if not fast:
+                return
             if self.reroll_n >= 10:
                 self.reroll_n = 0
                 self.log("패스트 모드: %s이지만 10번 연속 다시 뽑아서 이번 판은 그대로 진행" % self.act_name)
             else:
                 self.reroll_n += 1
                 self.rerolling = True
-                runlog.tag("skip", k or 0)
-                self.log("패스트 모드: %s으로 읽음 (읽은 값: %s)" % (self.act_name, ", ".join(str(x) for x in self.act_votes[-8:])))
+                runlog.tag("skip", k)
+                self.log("패스트 모드: %s으로 읽음 (가운데 큰 글자: %s / 오른쪽 위: %s)" % (
+                    self.act_name, ", ".join(str(x) for x in bv[-4:]) or "없음",
+                    ", ".join(str(x) for x in self.act_votes[-6:]) or "없음"))
                 self.exit_tries, self.exit_at = 0, 0.0
         elif now - self.act_t0 > 7:
             self.act_done = True
-            self.log("패스트 모드: 몇 막인지 확실히 읽지 못해 이번 판은 그대로 진행 (읽은 값: %s)"
-                     % (", ".join(str(x) for x in self.act_votes[-8:]) or "없음"))
+            if fast:
+                self.log("패스트 모드: 몇 막인지 확실히 읽지 못해 이번 판은 그대로 진행 (가운데: %s / 오른쪽 위: %s)"
+                         % (", ".join(str(x) for x in bv[-4:]) or "없음",
+                            ", ".join(str(x) for x in self.act_votes[-8:]) or "없음"))
 
     def _fast_count(self):
         """패스트 모드: open the inventory, read the burning-essence stacks, close it again."""
