@@ -363,6 +363,7 @@ class Picker:
         self.town_fix, self.town_fix_n = 0.0, 0
         self.title_at, self.title_click = 0.0, 0.0
         self.reroll_n = 0
+        self.reset_seen = float(state.get("run_reset", 0) or 0) if state else 0.0
         self.fast_counted = False
         self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
         self.act_name = ""
@@ -942,14 +943,16 @@ class Picker:
                                  {"down": Key.down, "up": Key.up, "enter": Key.enter, "tab": Key.tab},
                                  attempt=self.exit_tries):
             self.state["over"] = False
-            self.state["run_reset"] = time.time()
+            self.state["run_reset"] = self.reset_seen = time.time()
             self.state["town_check"] = time.time() + 40
             self.frame = None
             self.log("마을로 나감: 저장 후 나가기 (다음 판)")
+            self._new_run()                       # the next run starts clean (tries, act check, flags)
             return
         self.frame = None
         if self.exit_tries >= 6:
-            self.log("Esc 메뉴로 마을에 가지 못함 (6번): 포탈로 다음 판")
+            self.log("Esc 메뉴로 마을에 가지 못함 (6번): %s" % (
+                "판 시간 제한으로 나갈 때까지 기다림" if self.opts.get("fast_mode") else "포탈로 다음 판"))
 
     def _portal_now(self, frame, s, now, me, portal, mark):
         self.npc_since = None
@@ -1022,7 +1025,10 @@ class Picker:
         o = self.opts
         top = sorter.Geo(frame).top
         s = (h - top) / 600.0                        # the game picture only (a window menu bar is not game)
-        if self.state.get("run_reset", 0) > (self.over_since or 0) and self.over_since is not None:
+        rr = self.state.get("run_reset", 0) or 0
+        if rr > self.reset_seen:
+            # the run ended (left by the engine or by the helper, or started over): every flag of it goes
+            self.reset_seen = rr
             self._new_run()
         top = sorter.Geo(frame).top                  # a window menu bar inside the client area is not game
         self.top = top
@@ -1327,7 +1333,7 @@ class Picker:
                 return
             if self.exit_tries < 6:
                 self._exit_town(now, "패스트 모드: 보스 처치 -> Esc로 마을로 가서 다음 판")
-                return
+            return                                # 패스트 모드 never picks up: wait for the time limit
         if self._route(now):
             return
         h, w = frame.shape[:2]
