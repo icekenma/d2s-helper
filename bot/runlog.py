@@ -10,7 +10,7 @@ from . import paths
 
 RUNS = "runs.jsonl"
 _lock = threading.Lock()
-_open = {"t": None}
+_open = {"t": None, "stage": 0}
 
 
 def _write(d):
@@ -24,7 +24,7 @@ def _write(d):
 def start(t, stage):
     if _open["t"] is not None:
         end(t, "다음 판 시작")
-    _open["t"] = t
+    _open["t"], _open["stage"] = t, int(stage or 0)
     _write({"ev": "start", "t": t, "stage": int(stage or 0)})
 
 
@@ -94,3 +94,31 @@ def build(limit=200):
     for k, r in enumerate(runs):
         r["n"] = k + 1
     return runs[::-1]
+
+
+def clear():
+    """Start the run table again: the old lines are moved aside (runs_old_<time>.jsonl). A run under way
+    stays in the new table, and the last essence count stays as the starting point of the next one.
+    -> how many runs were moved aside"""
+    from . import sorter
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    n = sum(1 for r in _lines(RUNS) if r.get("ev") == "start")
+    with _lock:
+        for name in (RUNS, sorter.ESS_LOG):
+            p = paths.p(name)
+            if not os.path.exists(p):
+                continue
+            last = None
+            if name == sorter.ESS_LOG:
+                rows = _lines(name)
+                last = rows[-1] if rows else None
+            try:
+                os.replace(p, paths.p(name.replace(".jsonl", "_old_%s.jsonl" % stamp)))
+            except OSError:
+                continue
+            if last is not None:
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(last, ensure_ascii=False) + "\n")
+    if _open["t"] is not None:
+        _write({"ev": "start", "t": _open["t"], "stage": _open["stage"]})
+    return n

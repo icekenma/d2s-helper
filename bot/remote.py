@@ -329,6 +329,10 @@ class Remote:
                     except Exception as e:
                         return self._send(500, json.dumps({"error": str(e)}).encode("utf-8"), "application/json")
                     return self._send(200, b"{}", "application/json")
+                if u.path == "/api/runs/clear" and method == "POST":
+                    from . import runlog
+                    n = runlog.clear()
+                    return self._send(200, json.dumps({"cleared": n}).encode("utf-8"), "application/json")
                 if u.path == "/api/items/clear" and method == "POST":
                     n = clear_items()
                     return self._send(200, json.dumps({"cleared": n}).encode("utf-8"), "application/json")

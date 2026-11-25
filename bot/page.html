@@ -307,6 +307,7 @@ summary::-webkit-details-marker{display:none}
   <div class="rh" role="row"><span>판</span><span>시작 → 종료</span><span>시간</span><span>정수</span><span>아이템</span></div>
   <div id="rRows"></div>
  </div>
+ <button class="clear" type="button" id="clearRuns">판 기록 비우기</button>
 </section>
 <section class="items keep" id="keepView" hidden>
  <div class="kp" id="kpNote"></div>
@@ -698,6 +699,11 @@ $("clearItems").onclick=function(){
  if(!items.length)return;
  if(!confirm("모은 아이템 목록 "+items.length+"개를 비울까요?\n(기록은 PC의 collected 폴더 안 old_ 폴더로 옮겨 둡니다)"))return;
  fetch("/api/items/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){items=[];cat="all";drawItems()}).catch(function(){});
+};
+$("clearRuns").onclick=function(){
+ if(!runs.length)return;
+ if(!confirm("판 기록 "+runs.length+"판을 비울까요?\n(지금 진행 중인 판은 남고, 지난 기록은 PC에 runs_old_ 파일로 옮겨 둡니다)"))return;
+ fetch("/api/runs/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){openRun=null;loadRuns()}).catch(function(){});
 };
 $("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};$("v-runs").onclick=function(){show("runs")};
 setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);

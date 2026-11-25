@@ -390,6 +390,15 @@ class App(tk.Tk):
         tk.Label(head, text="판 기록", bg=BG, fg=TEXT, font=(FONT, 15, "bold")).pack(side="left")
         live = tk.Label(head, text="", bg=BG, fg=GOLD, font=(FONT, 10, "bold"))
         live.pack(side="left", padx=12)
+
+        def clear_runs():
+            from tkinter import messagebox
+            if messagebox.askyesno("판 기록 비우기", "판 기록을 비울까요?\n진행 중인 판은 남고, 지난 기록은 runs_old_ 파일로 옮겨 둡니다.",
+                                   parent=w):
+                runlog.clear()
+                state["sel"] = None
+
+        ttk.Button(head, text="기록 비우기", command=clear_runs).pack(side="right")
         stats = tk.Frame(w, bg=BG)
         stats.pack(fill="x", padx=18, pady=(0, 10))
         cells = {}
