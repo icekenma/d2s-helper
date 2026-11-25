@@ -311,7 +311,7 @@ def item_on_cursor(io, geo):
     """Is an item hanging on the mouse cursor? (only with a panel open: the spots are fixed stone/UI)
     The cursor rests on spot A, then on spot B: an item on the cursor shows up at A only when the cursor is
     there, a big patch; the bare hand cursor is small."""
-    A, B = (400, 500), (400, 562)
+    A, B = (400, 500), (230, 585)          # B: far from A (bottom bar), so the item is only at A once
     ga = _gray_layout(io, geo, A)
     gb = _gray_layout(io, geo, B)
     if ga is None or gb is None:
@@ -321,28 +321,81 @@ def item_on_cursor(io, geo):
     return int(d.sum()) > 1200
 
 
+_WORN_REF = {}          # slot name -> gray picture of that worn slot, taken when nothing was on the cursor
+
+
+def _slot_gray(norm, name):
+    for k, (x, y), hw, hh in WORN_SLOTS:
+        if k == name:
+            return cv2.cvtColor(norm[y - hh:y + hh, x - hw:x + hw], cv2.COLOR_BGR2GRAY).astype(np.int16)
+    return None
+
+
+def remember_worn(norm):
+    """Pictures of the worn slots as they are now (called when nothing is on the cursor)."""
+    for name, _, _, _ in WORN_SLOTS:
+        g = _slot_gray(norm, name)
+        if g is not None and g.size:
+            _WORN_REF[name] = g
+
+
+def _changed_slots(norm):
+    """Worn slots that no longer look like they did (the item has gone from there), most changed first."""
+    out = []
+    for name, _, _, _ in WORN_SLOTS:
+        ref, cur = _WORN_REF.get(name), _slot_gray(norm, name)
+        if ref is None or cur is None or ref.shape != cur.shape:
+            continue
+        d = float(np.abs(ref - cur).mean())
+        if d > 12:
+            out.append((d, name))
+    return [n for d, n in sorted(out, reverse=True)]
+
+
 def restore_worn(io, log, halt=None):
-    """Safety net before any window is closed or anything else is clicked: an item picked up by a stray
-    click (e.g. the worn bow) hangs on the cursor, and closing the window would drop it on the ground.
-    Such an item is laid in an empty bag cell instead, and the helper stops (halt) so it can be checked.
-    -> True when an item was found on the cursor."""
+    """Safety net before any window is closed: an item picked up by a stray click (e.g. the worn bow) hangs
+    on the cursor, and closing the window would drop it on the ground. It is put back on where a worn slot
+    is now empty; only if that cannot be done is it laid in an empty bag cell and the helper stopped.
+    -> True when an item was on the cursor."""
     f = io.grab()
     if f is None:
         return False
     geo = Geo(f)
     n = geo.normalize(f)
     if seen(n, "inv") < 0.7:
-        return False                               # no bags on screen: nothing to lay it in
+        return False                               # no equipment panel on screen
     if not item_on_cursor(io, geo):
+        remember_worn(geo.normalize(io.grab()))    # all is well: keep a picture of the worn slots
         return False
-    inv = read_inventory(geo.normalize(io.grab()))
+    n = geo.normalize(io.grab())
+    order = _changed_slots(n)                      # the slot it came from (compared with before)
+    order += [k for k in empty_worn(n) if k not in order]
+    if "무기" not in order:
+        order.append("무기")                        # the weapon is the one a stray click usually takes
+    pos = dict((k, p) for k, p, _, _ in WORN_SLOTS)
+    for name in order:
+        before = _slot_gray(n, name)
+        io.click(*geo.raw(*pos[name]))
+        time.sleep(0.45)
+        if not item_on_cursor(io, geo):
+            log("마우스에 들려 있던 아이템을 비어 있던 착용 칸(%s)에 다시 착용함" % name)
+            remember_worn(geo.normalize(io.grab()))
+            return True
+        n2 = geo.normalize(io.grab())
+        after = _slot_gray(n2, name)
+        if before is not None and after is not None and float(np.abs(before - after).mean()) > 12:
+            io.click(*geo.raw(*pos[name]))         # it swapped with what was worn there: swap back
+            time.sleep(0.45)
+        n = geo.normalize(io.grab())
+    # could not be put on: into the bags, and stop so nothing else happens to it
+    inv = read_inventory(n)
     spot = next(((c, r) for r in range(INV_ROWS) for c in range(INV_COLS) if not inv[r][c]), None)
     if spot is None:
-        log("마우스에 아이템이 들려 있는데 인벤토리에 빈칸이 없음 - 자동 진행을 멈춤 (창을 닫지 마세요)")
+        log("마우스에 아이템이 들려 있는데 착용 칸도 인벤토리 빈칸도 없음 - 자동 진행을 멈춤")
     else:
         io.click(*geo.raw(*cell_center(*spot)))
         time.sleep(0.4)
-        log("마우스에 아이템이 들려 있어 인벤토리 빈칸(%d,%d)에 내려놓음 - 착용 장비였는지 확인하세요. 자동 진행을 멈춤"
+        log("마우스에 들려 있던 아이템을 착용하지 못해 인벤토리 빈칸(%d,%d)에 내려놓고 자동 진행을 멈춤"
             % (spot[0] + 1, spot[1] + 1))
     if halt:
         halt()

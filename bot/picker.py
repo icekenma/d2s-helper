@@ -1033,7 +1033,10 @@ class Picker:
                         for k in list(held):
                             self.io.key_up(k)
                         try:
-                            if sorter.restore_worn(self.io, self.log, lambda: self.state.__setitem__("halt_now", True)):
+                            halted = []
+                            sorter.restore_worn(self.io, self.log,
+                                                lambda: (halted.append(1), self.state.__setitem__("halt_now", True)))
+                            if halted:
                                 return True
                         except Exception:
                             pass

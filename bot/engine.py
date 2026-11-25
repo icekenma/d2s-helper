@@ -137,7 +137,9 @@ class Engine(threading.Thread):
                     try:
                         # every time the window opens: an empty inventory makes this a quick no-op
                         self.log("대장장이 창 확인: 자동 정리 시작")
-                        if sorter.restore_worn(io, self.log, lambda: self.emit("halt", None)):
+                        halted = []
+                        sorter.restore_worn(io, self.log, lambda: (halted.append(1), self.emit("halt", None)))
+                        if halted:
                             return True
                         text, done = sorter.cleanup(io, self.cfg.get("sort", {}), self.base, self.log,
                                                     self.stop_flag)
