@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Item score out of 100 for unique and set items, against original Diablo II roll ranges."""
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -253,6 +254,9 @@ def ends_with(text, phrase, need=0.8):
     return SequenceMatcher(None, tail, jamo("".join(want))).ratio() >= need
 
 
+QTY_FIX = str.maketrans({"I": "1", "l": "1", "|": "1", "ㅣ": "1", "!": "1", "O": "0", "o": "0", "@": "0",
+                         "S": "5", "B": "8"})
+
 # the player's best items: always stashed (never registered by the game's '수집', never sold)
 KEEP_NAMES = {"바람살": 0.72, "신념": 0.78, "명예의 굴레": 0.6, "수수께끼": 0.6}
 
@@ -303,6 +307,10 @@ def evaluate(crop, s, keep_words=None):
             out["kind"] = "큰 부적"
         elif color == "yellow" and "화살" in spot._words and word("화살"):
             out["kind"], out["keep"] = "레어 화살", True
+    if len(lines) > 1:                         # '수량: N' right under the name (essences stack in one cell);
+        l = lines[1]                           # the line after it is the sale price, never the count
+        if l.get("label") and l["numbers"] and l["color"] == "white":
+            out["qty"] = l["numbers"][0]
     if status()[0]:
         def text(l):
             return ocr_line(img[max(0, l["y0"] - 3):l["y1"] + 3, max(0, l["box"][0] - 4):l["box"][1] + 4])
@@ -313,6 +321,12 @@ def evaluate(crop, s, keep_words=None):
             if not out["keep"] and (ends_with(name, "룬") or ends_with(name, "정수") or has_word(name, "열쇠")
                                      or has_word(name, "주얼")):
                 out["keep"] = True
+            if not out["kind"] and ends_with(name, "정수"):
+                out["kind"] = "정수"
+            if out["kind"] == "정수" and out.get("qty") is None and len(lines) > 1:
+                m = re.search(r"(\d+)", text(lines[1]).split(":")[-1].translate(QTY_FIX))
+                if m:
+                    out["qty"] = int(m.group(1))
             if not out["keep"] and color == "yellow" and len(lines) > 1:
                 base = text(lines[1])
                 if "화살" in base or "화살" in name:

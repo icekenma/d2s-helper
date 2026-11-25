@@ -15,6 +15,7 @@ from . import scorer
 from . import paths
 
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
+ESSENCE_HOLD = 90       # an essence stack stays in the bags until it holds more than this
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
 TAB_SHOP2, TAB_STASH2 = (136, 17), (345, 17)            # new window (2026-11): 파라 / 도박 / 보관함, wider tabs
 STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}   # old: 3 shared
@@ -892,6 +893,8 @@ def cleanup(io, opts, base_dir, log, stop):
             cells = footprint.get(cell, [])
             if len(cells) == 3 and len({c for c, r in cells}) == 1:
                 ev["kind"], ev["keep"] = "레어 화살", True
+        if ev.get("kind") == "정수" and (ev.get("qty") is None or ev["qty"] <= ESSENCE_HOLD):
+            return "hold"                       # essences stay in the bags (one stack each) until over 90
         if ev["keep"]:
             return "essence"                    # essences, jewels, small charms, skill grand charms
         if ev["color"] in ("gold", "green"):
@@ -947,6 +950,8 @@ def cleanup(io, opts, base_dir, log, stop):
     walk(survey)
     if stop.is_set():
         return "자동 정리 중단", False
+    if plan.get("hold"):
+        log("정수 %d묶음은 인벤토리에 그대로 둠 (한 묶음이 %d개를 넘으면 보관함으로)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
     stash_kinds = ("essence", "keep", "leave")
 
