@@ -1595,6 +1595,22 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             " (화면 저장함)" if round_ == 2 and _snap_base[0] else ""))
         return r_
 
+    # already out of the stage (town / loading)? There the same menu line quits to the game's main menu.
+    town = 0
+    for _ in range(3):
+        f_, n_ = norm_now()
+        if f_ is None:
+            break
+        covered = seen(n_, "panel") >= 0.8 or seen(n_, "inv") >= 0.7 or menu_open(n_) or confirm_shown(n_)
+        if covered or not out_of_stage(f_):
+            town = 0
+            break
+        town += 1
+        time.sleep(0.35)
+    if town >= 3:
+        log("이미 사냥터 밖(마을)이라 Esc -> 저장 후 나가기를 하지 않음 (게임 첫 화면으로 빠지는 것 방지)")
+        return True
+
     blind = False
     f, n = esc_and_look()
     if n is None:
