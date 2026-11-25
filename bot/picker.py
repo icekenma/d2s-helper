@@ -897,7 +897,9 @@ class Picker:
             self.act_votes.append(act if act else (0 if max(sc.values()) < 0.7 else None))
         v = [x for x in self.act_votes if x is not None]
         good = sum(1 for x in v if x in (3, 4))
-        bad = sum(1 for x in v if x in (0, 1, 2, 5))
+        # leaving needs the same act 1 / 2 / 5 read clearly three times: an unclear reading (0) never
+        # counts, so a 4 that was hard to read once is played rather than left
+        bad = max([v.count(k) for k in (1, 2, 5)] or [0])
         if not self.opts.get("fast_mode"):
             # not 패스트 모드: only noted for the run table, never left for
             known = [x for x in v if x]
@@ -914,8 +916,8 @@ class Picker:
             self.log("패스트 모드: %d막 - 이 판 진행 (정수 2개)" % a)
         elif bad >= 3 and good == 0:
             self.act_done = True
-            k = max(set(v), key=v.count)
-            self.act_name = "%d막" % k if k else "1막이나 2막"
+            k = max((1, 2, 5), key=v.count)
+            self.act_name = "%d막" % k
             runlog.tag("act", k or None)
             if self.reroll_n >= 10:
                 self.reroll_n = 0
@@ -924,6 +926,7 @@ class Picker:
                 self.reroll_n += 1
                 self.rerolling = True
                 runlog.tag("skip", k or 0)
+                self.log("패스트 모드: %s으로 읽음 (읽은 값: %s)" % (self.act_name, ", ".join(str(x) for x in self.act_votes[-8:])))
                 self.exit_tries, self.exit_at = 0, 0.0
         elif now - self.act_t0 > 7:
             self.act_done = True

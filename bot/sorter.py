@@ -283,6 +283,30 @@ def read_act(frame, top, base_dir):
     h, w = frame.shape[:2]
     s = (h - top) / 600.0
     crop = frame[top: top + int(0.13 * (h - top)), int(0.60 * w):]
+    # the digit is a few pixels across: resampling it to the game's scale shifts its strokes, so it is
+    # read at a few scales around the window's own and the best match of every digit counts
+    best_sc, thin = {}, 0
+    for k in ACT_SCALES:
+        a, sc = _act_at(crop, s * k)
+        if a == 1 and sc == {1: 1.0}:
+            thin += 1
+            continue
+        for lab, v in sc.items():
+            best_sc[lab] = max(best_sc.get(lab, -1.0), v)
+    if not best_sc:
+        return (1, {1: 1.0}) if thin else (None, {})
+    if thin > len(ACT_SCALES) // 2:
+        return 1, {1: 1.0}
+    order = sorted(best_sc, key=lambda k_: -best_sc[k_])
+    act = order[0] if best_sc[order[0]] >= 0.8 and (len(order) < 2 or best_sc[order[0]] - best_sc[order[1]] >= 0.05) else None
+    return act, best_sc
+
+
+ACT_SCALES = (0.94, 0.97, 1.0, 1.03, 1.06)
+
+
+def _act_at(crop, s):
+    from . import spot
     m = spot.area_mask(crop, s)
     best = (0.0, None)
     for t in spot._words.get("공포영역", ()):
