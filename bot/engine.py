@@ -22,6 +22,9 @@ for _i in range(1, 13):
     SPECIAL["f%d" % _i] = getattr(Key, "f%d" % _i)
 
 
+STAGE_LIMIT = 180         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
+
+
 def grab_client(sct, rect):
     l, t, w, h = rect
     shot = sct.grab({"left": l, "top": t, "width": w, "height": h})
@@ -50,6 +53,10 @@ class Engine(threading.Thread):
         self.exit_at = 0.0
         self.focus_at, self.focus_note = 0.0, 0.0
         self.clock_at, self.clock_prev = 0.0, None
+        self.out_since = None                     # since when the run info at the top right is gone
+        self.stage_at = 0.0
+        self.need_out = False                     # left on purpose: the clock waits for town / loading first
+        self.state["stage_in"] = None             # when this run's stage was entered (3-minute limit)
 
     def stop(self):
         self.stop_flag.set()
@@ -261,6 +268,32 @@ class Engine(threading.Thread):
         finally:
             io.close()
 
+    def _stage_clock(self, frame, now):
+        """Start the 3-minute clock when a stage is entered (the run info appears at the top right),
+        clear it in town / on the loading screen / when the run restarts."""
+        st = self.state
+        si = st.get("stage_in")
+        if si and st.get("run_reset", 0) > si:
+            st["stage_in"] = si = None                 # the run ended and starts over
+        if frame is None or now - self.stage_at < 0.9:
+            return
+        self.stage_at = now
+        try:
+            out = sorter.out_of_stage(frame)
+        except Exception:
+            return
+        if out:
+            if self.out_since is None:
+                self.out_since = now
+            elif now - self.out_since >= 1.5:
+                st["stage_in"] = None                  # town or loading: the next stage starts the clock again
+                self.need_out = False
+            return
+        self.out_since = None
+        if not si and not self.need_out:
+            st["stage_in"] = now
+            self.log("사냥터 입장: %d분 뒤에는 무조건 다음 판으로" % (STAGE_LIMIT // 60))
+
     def _stuck(self, fg, dry, frame=None):
         """Last resort: nothing has happened for 2 minutes after the boss died (or 3 minutes have gone
         by in all). Esc -> "저장 후 나가기": back to town, and the town step starts a new run."""
@@ -271,7 +304,11 @@ class Engine(threading.Thread):
         st.setdefault("progress_at", now)
         self._clock(frame, now)
         quiet_all = now - st["progress_at"]
-        if st.get("over"):
+        self._stage_clock(frame, now)
+        si = st.get("stage_in")
+        if si and now - si >= STAGE_LIMIT:
+            due, why = True, "포탈로 들어간 지 %d분 지남 (무조건 다음 판)" % int((now - si) // 60)
+        elif st.get("over"):
             over_at = st.get("over_at", now)
             quiet = now - max(st["progress_at"], over_at)
             due = quiet >= 120 or now - over_at >= 240 + float(st.get("route_len", 0) or 0)
@@ -302,6 +339,9 @@ class Engine(threading.Thread):
                     st["over"] = False
                     st["run_reset"] = time.time()
                     st["progress_at"] = time.time()
+                    st["stage_in"] = None
+                    self.need_out = True
+                    st["town_check"] = time.time() + 40      # still in the stage 40 s later: try again
                     self.emit("restart", None)
                     self.log("저장 후 나가기 클릭")
                     return True

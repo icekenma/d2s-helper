@@ -15,7 +15,8 @@ from . import scorer
 from . import paths
 
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
-ESSENCE_HOLD = 90       # an essence stack stays in the bags until it holds more than this
+ESSENCE_HOLD = 90       # an essence stack stays in the bags until it holds this many (then: stash)
+ESS_NEED = 0.6          # essence picture match
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
 TAB_SHOP2, TAB_STASH2 = (136, 17), (345, 17)            # new window (2026-11): 파라 / 도박 / 보관함, wider tabs
 STASH_SUBTABS = {"개인": (130, 51), "공유 1": (185, 51), "공유 2": (240, 51), "공유 3": (295, 51)}   # old: 3 shared
@@ -169,6 +170,42 @@ def _match(roi, tmpl):
         return 0.0
     v = cv2.minMaxLoc(cv2.matchTemplate(roi, tmpl, cv2.TM_CCOEFF_NORMED))[1]
     return float(v) if np.isfinite(v) else 0.0
+
+
+_ess_t = [None]
+
+
+def _ess_templates(base_dir):
+    """Essence cell pictures (26 x 26 each, side by side), upper part only: the stack count sits bottom right."""
+    if _ess_t[0] is None:
+        ts = []
+        try:
+            img = _asset(base_dir, "essence_icons.png")
+            for i in range(img.shape[1] // 26):
+                ts.append(img[0:18, i * 26:i * 26 + 20].astype(np.float32))
+        except Exception:
+            pass
+        _ess_t[0] = ts
+    return _ess_t[0]
+
+
+def essence_cell(norm, col, row, base_dir):
+    """True when the cell shows an essence (navy night sky with little crosses over a crystal),
+    from the picture alone: no info box needed, so it is never mistaken for part of another item."""
+    x, y = INV_X + CELL * col, INV_Y + CELL * row
+    inner = norm[y + 2:y + CELL - 1, x + 2:x + CELL - 1]
+    if inner.shape[0] < 20 or inner.shape[1] < 20:
+        return False
+    b, g, r = np.median(inner[0:16].reshape(-1, 3), axis=0)
+    if b < 30 or b - r < 20:                   # no navy sky
+        return False
+    roi = norm[max(0, y - 1):y + CELL + 2, max(0, x - 1):x + CELL + 2].astype(np.float32)
+    for t in _ess_templates(base_dir):
+        if roi.shape[0] >= t.shape[0] and roi.shape[1] >= t.shape[1]:
+            v = cv2.minMaxLoc(cv2.matchTemplate(roi, t, cv2.TM_CCOEFF_NORMED))[1]
+            if np.isfinite(v) and v >= ESS_NEED:
+                return True
+    return False
 
 
 def run_ended(norm, base_dir):
@@ -614,6 +651,9 @@ def sweep_cells(io, geo, wanted, mod, word, log, stop, judge=None):
 def sell_sweep(io, geo, actions, thr, base_dir, log, stop):
     """Shift-click 'sell' colours; for 'sell_low' colours sell only items scoring under thr."""
     def judge(cell, color):
+        f = io.grab()
+        if f is None or essence_cell(geo.normalize(f), cell[0], cell[1], base_dir):
+            return False                        # essences are never sold
         if actions.get(color) != "sell_low":
             return True
         _park(io, geo)
@@ -772,6 +812,15 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         f = io.grab()
         return None if f is None else geo.normalize(f)
 
+    ess_cells = set()                           # cells whose picture is an essence (latest look)
+
+    def ess_scan(n, inv):
+        ess_cells.clear()
+        for r_ in range(INV_ROWS):
+            for c_ in range(INV_COLS):
+                if inv[r_][c_] and essence_cell(n, c_, r_, base_dir):
+                    ess_cells.add((c_, r_))
+
     shift = {"bottom": (0, 0)}
 
     def open_stash(name):
@@ -848,7 +897,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     def inspect(cell, fresh=False):
         """Info of the item in a cell. One hover per item: the rest of an item (same background colour
         in a block from its top-left cell) takes the same info until something proves otherwise."""
-        if not fresh and cell in assumed:
+        ess = cell in ess_cells
+        if not fresh and cell in assumed and not ess:
             return assumed[cell][1]
         assumed.pop(cell, None)                 # looked at for itself from here on
         if base_img[0] is None:
@@ -859,7 +909,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
             return None
         nb = geo.normalize(base)
         fp = _fingerprint(nb, *cell)
-        if fp in known and not fresh:
+        if fp in known and not fresh and not ess:      # an essence is always read itself (its count)
             ev = known[fp]
             tip_of[cell] = tip_by_fp.get(fp)
         else:
@@ -894,10 +944,12 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         c, r = cell
         col = inv[r][c]
         cells = [cell]
-        if col and col != "other":
-            wdt = 2 if c + 1 < INV_COLS and inv[r][c + 1] == col and (c + 1, r) not in footprint else 1
+        if col and col != "other" and not ess:   # an essence is one cell; never part of another block
+            wdt = 2 if (c + 1 < INV_COLS and inv[r][c + 1] == col and (c + 1, r) not in footprint
+                        and (c + 1, r) not in ess_cells) else 1
             hgt = 1
-            while r + hgt < INV_ROWS and hgt < 4 and all(inv[r + hgt][c + i] == col for i in range(wdt)):
+            while r + hgt < INV_ROWS and hgt < 4 and all(inv[r + hgt][c + i] == col and (c + i, r + hgt) not in ess_cells
+                                                          for i in range(wdt)):
                 hgt += 1
             cells = [(c + i, r + j) for j in range(hgt) for i in range(wdt)]
         footprint[cell] = cells
@@ -910,6 +962,12 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         return ev["name"] or ev["raw"] or ev["kind"] or ev["quality"]
 
     def decide(ev, cell=None):
+        # essences: never sold; a stack stays in the bags until it holds ESSENCE_HOLD (90), then to the stash.
+        # Known by the cell picture even when the info box was not read, or by the box (name / stack count).
+        if (cell is not None and cell in ess_cells) or (ev and (ev.get("kind") == "정수" or (
+                ev.get("qty") is not None and not ev.get("keep") and ev.get("color") not in ("gold", "green")))):
+            q = ev.get("qty") if ev else None
+            return "essence" if q is not None and q >= ESSENCE_HOLD else "hold"
         if not ev:
             return "leave"                      # no info box could be read: never sell blind
         if ev.get("forged"):
@@ -922,8 +980,6 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
             cells = footprint.get(cell, [])
             if len(cells) == 3 and len({c for c, r in cells}) == 1:
                 ev["kind"], ev["keep"] = "레어 화살", True
-        if ev.get("kind") == "정수" and (ev.get("qty") is None or ev["qty"] <= ESSENCE_HOLD):
-            return "hold"                       # essences stay in the bags (one stack each) until over 90
         if ev["keep"]:
             return "essence"                    # essences, jewels, small charms, skill grand charms
         if ev["color"] in ("gold", "green"):
@@ -951,6 +1007,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
             if n is None:
                 return
             inv = read_inventory(n)
+            ess_scan(n, inv)
             cell = next(((c, r) for r in range(INV_ROWS) for c in range(INV_COLS)
                          if inv[r][c] and (c, r) not in done), None)
             if cell is None:
@@ -982,7 +1039,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     if probe and plan.get("leave") and not io.front():
         return NEED_FRONT, False                # info boxes missing: the game is behind other windows
     if plan.get("hold"):
-        log("정수 %d묶음은 인벤토리에 그대로 둠 (한 묶음이 %d개를 넘으면 보관함으로)" % (plan["hold"], ESSENCE_HOLD))
+        log("정수 %d묶음은 인벤토리에 그대로 둠 (%d개 이상인 묶음만 보관함으로, 정수는 절대 판매 안 함)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
     stash_kinds = ("essence", "keep", "leave")
 
@@ -1108,6 +1165,10 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         else:
             def sell(cell, ev, d):
                 if d == "sell":
+                    n_ = norm_now()             # last look right before selling: an essence is never sold
+                    if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
+                        log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
+                        return
                     tap(cell_center(*cell), mod="shift")
                     acted(cell)
                     _park(io, geo)
