@@ -283,6 +283,11 @@ class Remote:
                     st = dict(remote.get_state())
                     st["snaps"] = read_snaps(remote.base)
                     st["now"] = time.time()
+                    try:
+                        with open(os.path.join(remote.base, "VERSION"), "r", encoding="utf-8") as vf:
+                            st["version"] = vf.read().strip()     # the phone page reloads itself when it changes
+                    except OSError:
+                        pass
                     return self._send(200, json.dumps(st, ensure_ascii=False).encode("utf-8"),
                                       "application/json; charset=utf-8")
                 if u.path == "/api/toggle" and method == "POST":

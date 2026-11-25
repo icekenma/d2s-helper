@@ -205,6 +205,10 @@ summary::-webkit-details-marker{display:none}
 .hero.idle .embers{display:none}
 @keyframes rise{0%{transform:translate(0,0);opacity:0}15%{opacity:.9}100%{transform:translate(var(--dx,8px),-150px);opacity:0}}
 
+.rfresh{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ash);margin:-4px 2px -4px}
+.rfresh i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.rfresh.ok i{background:var(--life);animation:beat 1.8s ease-out infinite}
+.rfresh.err{color:#d98b7f}.rfresh.err i{background:var(--blood2)}
 /* today's essences */
 .forge{position:relative;padding:16px 16px 14px;border-radius:18px;background:linear-gradient(160deg,var(--iron2),var(--iron));box-shadow:inset 0 0 0 1px var(--edge)}
 .forge .row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
@@ -398,6 +402,7 @@ summary::-webkit-details-marker{display:none}
 <section class="items rlog" id="runsView" hidden>
  <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
   <stop offset="0" stop-color="#f0c96f"/><stop offset="1" stop-color="#ff7a2f"/></linearGradient></defs></svg>
+ <div class="rfresh" id="rFresh" role="status" aria-live="polite"><i></i><span id="rFreshT">불러오는 중</span></div>
  <div class="hero idle" id="rHero">
   <div class="embers" id="rEmb" aria-hidden="true"></div>
   <div class="ring"><svg viewBox="0 0 128 128" aria-hidden="true"><circle class="tr" cx="64" cy="64" r="54"/>
@@ -509,13 +514,14 @@ summary::-webkit-details-marker{display:none}
 </div>
 <script>
 var $=function(i){return document.getElementById(i)};
-var running=false,mod="",lastTouch=0,busyImg=false;
+var running=false,mod="",lastTouch=0,busyImg=false,pageVer=null;
 function post(path,body){return fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})}).catch(function(){})}
 function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(function(n){return String(n).padStart(2,"0")}).join(":")}
 
 /* status */
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
+  if(s.version){if(pageVer&&s.version!==pageVer){location.reload();return}pageVer=s.version}
   running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
@@ -780,13 +786,18 @@ function tclock(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours(
 function hm(t){if(!t)return "";var d=new Date(t*1000);return two(d.getHours())+":"+two(d.getMinutes())}
 function mss(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+":"+two(s%60)}
 function gainOf(r){return r.ess!=null?r.ess:(r.est!=null?r.est:null)}
+var runsAt=0,runsErr=false,runsBusy=false,runsTick=0;
+function freshDraw(){var el=$("rFresh");if(!el)return;var a=runsAt?Math.round((Date.now()-runsAt)/1000):null;
+ el.className="rfresh"+(runsErr?" err":a!=null&&a<=4?" ok":"");
+ $("rFreshT").textContent=runsErr?"PC와 연결이 끊김 · 다시 시도하는 중":a==null?"불러오는 중":a<=4?"실시간 · 3초마다 새로고침":a+"초 전 기록"}
 function loadRuns(){
- fetch("/api/runs").then(function(r){return r.json()}).then(function(d){runs=d.runs||[];var skew=Date.now()/1000-(d.now||Date.now()/1000);
+ if(runsBusy)return;runsBusy=true;
+ fetch("/api/runs?t="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){runsBusy=false;runsAt=Date.now();runsErr=false;runs=d.runs||[];var skew=Date.now()/1000-(d.now||Date.now()/1000);
   runs.forEach(function(r){r._skew=skew});
   var top=runs.length?runs[0].n:0;
   if(seenN!==null)runs.forEach(function(r){if(r.n>seenN&&!r.live)newN[r.n]=1});
   if(seenN===null||top>seenN)seenN=runs.filter(function(r){return !r.live}).reduce(function(a,r){return Math.max(a,r.n)},0);
-  drawRuns(true)}).catch(function(){});
+  drawRuns(true);freshDraw()}).catch(function(){runsBusy=false;runsErr=true;freshDraw()});
 }
 function embers(){var e=$("rEmb");if(e.childNodes.length)return;var h="";
  for(var i=0;i<9;i++)h+='<i style="left:'+(8+i*10.5)+'%;--dx:'+(i%2?-1:1)*(6+i*2)+'px;animation-delay:'+(i*0.41).toFixed(2)+'s;animation-duration:'+(3+(i%4)*0.5)+'s"></i>';
@@ -799,6 +810,7 @@ function rollEss(to){
  (function step(t){var p=Math.min(1,(t-t0)/900);el.textContent=Math.round(from+k*(1-Math.pow(1-p,3)));if(p<1)essAnim=requestAnimationFrame(step)})(t0);
 }
 function drawRuns(full){
+ freshDraw();
  var now=Date.now()/1000,lim=CD.limit||240,cur=runs.length&&runs[0].live?runs[0]:null;
  var t0=new Date();t0.setHours(0,0,0,0);t0=t0.getTime()/1000;
  var td=runs.filter(function(r){return r.start>=t0});
@@ -892,7 +904,7 @@ function show(v){
  $("v-runs").setAttribute("aria-selected",String(rn));$("v-ctl").setAttribute("aria-selected",String(ctl));
  clearInterval(runsT);runsT=null;
  if(!ctl){stopStream();if(it)loadItems();else if(kp)loadKeep();else{loadRuns();
-  runsT=setInterval(function(){if(document.hidden)return;var k=(runsT.k=(runsT.k||0)+1);if(k%3===0)loadRuns();else drawRuns()},1000)}}
+  runsTick=0;runsT=setInterval(function(){if(document.hidden)return;runsTick++;if(runsTick%3===0)loadRuns();else drawRuns()},1000)}}
  else if(!stillT){startStream()}
  history.replaceState(null,"",it?"#items":kp?"#keep":rn?"#runs":"#");
 }
@@ -910,5 +922,6 @@ $("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show(
 setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);
 if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");else if(location.hash==="#runs")show("runs");
 
-document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!stillT&&!$("ctlView").hidden)startStream()}});
+window.addEventListener("pageshow",function(e){if(e.persisted){status();if(!$("runsView").hidden)loadRuns()}});
+document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!$("runsView").hidden)loadRuns();if(!stillT&&!$("ctlView").hidden)startStream()}});
 </script></body></html>
