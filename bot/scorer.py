@@ -275,7 +275,7 @@ def set_min_star(n):
 def _set_keep(out, nm):
     """A keep-list name was recognised: kept only when rated at least KEEP_MIN_STAR stars."""
     st = STAR.get(nm, 5)
-    out["star"] = st
+    out["star"], out["seen_name"] = st, nm
     if st >= KEEP_MIN_STAR[0]:
         out["keep_name"], out["kind"] = nm, nm
 

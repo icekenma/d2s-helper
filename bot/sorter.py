@@ -697,7 +697,7 @@ def record_item(base_dir, action, ev, tip, tab=""):
                 img = ""
         ev = ev or {}
         line = {"t": round(now, 1), "action": action, "tab": tab,
-                "name": ev.get("name") or "", "raw": ev.get("raw") or "", "kind": ev.get("kind") or "",
+                "name": ev.get("name") or ev.get("seen_name") or "", "raw": ev.get("raw") or "", "kind": ev.get("kind") or "",
                 "quality": ev.get("quality") or "", "color": ev.get("color") or "", "score": ev.get("score"),
                 "img": img}
         with open(os.path.join(d, "index.jsonl"), "a", encoding="utf-8") as f:
@@ -721,7 +721,7 @@ def cleanup(io, opts, base_dir, log, stop):
         from . import win
         prev_fg = ctypes.windll.user32.GetForegroundWindow()
         if win.focus(io.hwnd):
-            log("게임 창이 뒤에 있어 아이템 정보창이 안 뜸: 정리하는 동안만 게임 창을 앞으로 가져옴")
+            log("게임 창이 뒤에 있어 정보창이 안 뜨는 아이템이 있음: 정리하는 동안만 게임 창을 앞으로 가져옴")
             time.sleep(0.5)
         else:
             prev_fg = None
@@ -979,8 +979,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     walk(survey)
     if stop.is_set():
         return "자동 정리 중단", False
-    if probe and plan and set(plan) == {"leave"} and not io.front():
-        return NEED_FRONT, False                # not one info box showed: the game is behind other windows
+    if probe and plan.get("leave") and not io.front():
+        return NEED_FRONT, False                # info boxes missing: the game is behind other windows
     if plan.get("hold"):
         log("정수 %d묶음은 인벤토리에 그대로 둠 (한 묶음이 %d개를 넘으면 보관함으로)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
