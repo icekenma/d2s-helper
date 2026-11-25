@@ -98,6 +98,7 @@ class App(tk.Tk):
         spot.load(BASE)
         scorer.load(BASE, "")
         scorer.set_min_star(self.cfg.get("keep_star", 1))
+        sorter.RUN_INFO["stage"] = int(self.cfg.get("stage", 0) or 0)
         self._build()
         self._share()
         self._remote()
@@ -293,6 +294,7 @@ class App(tk.Tk):
         stage = max(0, min(99, stage))
         self.v_stage.set(str(stage) if stage else "")
         self.cfg["stage"] = stage
+        sorter.RUN_INFO["stage"] = stage
         save_cfg(self.cfg)
         if self.engine is not None:
             try:
@@ -434,6 +436,7 @@ class App(tk.Tk):
             stage = 0
         self.v_stage.set(str(stage) if stage else "")
         self.cfg["stage"] = stage
+        sorter.RUN_INFO["stage"] = stage
         try:
             radius = max(2.0, min(30.0, float(self.v_radius.get().strip() or 10)))
         except ValueError:

@@ -724,6 +724,19 @@ def _fingerprint(norm, col, row):
 
 
 _rec_n = [0]
+RUN_INFO = {"stage": 0}                  # set by the program: the stage being repeated (for the essence log)
+ESS_LOG = "essence_log.jsonl"
+
+
+def record_essences(snap, stashed):
+    """One line per tidy-up: the count of every essence stack in the bags (before any goes to the stash).
+    The phone works out how many came in per run / per hour / per stage from these lines."""
+    try:
+        with open(paths.p(ESS_LOG), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.time(), "stage": int(RUN_INFO.get("stage") or 0),
+                                "stacks": snap, "stashed": sorted(stashed)}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def record_item(base_dir, action, ev, tip, tab=""):
@@ -1037,14 +1050,23 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     # look at every item once first, so that only the steps that are needed get done
     plan = {}
 
+    ess_snap, ess_out = {}, set()
+
     def survey(cell, ev, d):
         plan[d] = plan.get(d, 0) + 1
+        if d in ("hold", "essence") and ev and ev.get("qty") is not None:
+            key = (ev.get("name") or ev.get("raw") or "").strip() or "칸 %d,%d" % (cell[0] + 1, cell[1] + 1)
+            ess_snap[key] = ess_snap.get(key, 0) + int(ev["qty"])
+            if d == "essence":
+                ess_out.add(key)
 
     walk(survey)
     if stop.is_set():
         return "자동 정리 중단", False
     if probe and plan.get("leave") and not io.front():
         return NEED_FRONT, False                # info boxes missing: the game is behind other windows
+    if ess_snap:
+        record_essences(ess_snap, ess_out)
     if plan.get("hold"):
         log("정수 %d묶음은 인벤토리에 그대로 둠 (%d개 이상인 묶음만 보관함으로, 정수는 절대 판매 안 함)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)

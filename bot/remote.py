@@ -53,6 +53,60 @@ KEYS = {"esc": Key.esc, "enter": Key.enter, "up": Key.up, "down": Key.down, "lef
         "right": Key.right, "tab": Key.tab, "c": "c", "t": "t", "space": Key.space}
 
 
+def essence_stats(days=3):
+    """Essences gained per tidy-up (one per run), from the counts of the stacks in the bags:
+    gained = now - before for every stack (a stack that went to the stash starts again from 0).
+    -> {"total", "runs", "per_run", "per_hour", "today", "stages": [...], "recent": [...]}"""
+    from . import sorter
+    p = paths.p(sorter.ESS_LOG)
+    rows = []
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+    since = time.time() - days * 86400
+    base, prev_t, runs = {}, None, []
+    for r in rows:
+        stacks = r.get("stacks") or {}
+        gained = 0
+        for k, q in stacks.items():
+            if k in base:
+                gained += max(0, q - base[k])
+        new_keys = [k for k in stacks if k not in base]
+        if base:                                # a stack seen for the first time came in this run
+            gained += sum(stacks[k] for k in new_keys)
+        first = not base
+        base = {k: (0 if k in (r.get("stashed") or []) else q) for k, q in stacks.items()}
+        dt = (r["t"] - prev_t) if prev_t else None
+        prev_t = r["t"]
+        if first or r["t"] < since:
+            continue
+        runs.append({"t": r["t"], "stage": r.get("stage", 0), "gained": gained,
+                     "dt": dt if dt is not None and dt < 15 * 60 else None})
+    def summ(rs):
+        n = len(rs)
+        g = sum(x["gained"] for x in rs)
+        secs = sum(x["dt"] for x in rs if x["dt"])
+        timed = [x for x in rs if x["dt"]]
+        gt = sum(x["gained"] for x in timed)
+        return {"runs": n, "gained": g, "per_run": round(g / n, 2) if n else 0,
+                "per_hour": round(gt * 3600.0 / secs, 1) if secs > 60 else None,
+                "min_per_run": round(secs / 60.0 / len(timed), 1) if timed else None}
+    stages = {}
+    for x in runs:
+        stages.setdefault(x["stage"], []).append(x)
+    day0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+    out = summ(runs)
+    out["today"] = summ([x for x in runs if x["t"] >= day0])
+    out["stages"] = sorted([dict(summ(v), stage=k) for k, v in stages.items()],
+                           key=lambda d: -(d["per_hour"] or 0))
+    out["recent"] = [{"t": x["t"], "stage": x["stage"], "gained": x["gained"]} for x in runs[-12:]][::-1]
+    return out
+
+
 def read_items(base, limit=2000):
     """Registered / stashed items, newest first (sold ones are never logged)."""
     p = paths.p(os.path.join("collected", "index.jsonl"))
@@ -296,6 +350,9 @@ class Remote:
                     if cb:
                         cb(star)
                     return self._send(200, json.dumps({"star": star}).encode("utf-8"), "application/json")
+                if u.path == "/api/essences" and method == "GET":
+                    body = json.dumps(essence_stats(), ensure_ascii=False)
+                    return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/items" and method == "GET":
                     body = json.dumps({"items": read_items(remote.base), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")

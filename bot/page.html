@@ -139,6 +139,28 @@ summary::-webkit-details-marker{display:none}
 
 /* collected items */
 .items{max-width:760px;margin:0 auto;padding:2px 14px 30px;display:grid;gap:12px}
+/* essence statistics: how many come in per hour, per run, per stage */
+.est{padding:16px;border-radius:var(--r);background:linear-gradient(160deg,var(--iron2),var(--iron));box-shadow:inset 0 0 0 1px var(--edge)}
+.est .etop{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.est .etop b{font-size:15px;display:block}
+.est .etop small{font-size:12.5px;color:var(--ash)}
+.est .big{font-size:34px;font-weight:800;color:var(--gold2);line-height:1;font-variant-numeric:tabular-nums;text-align:right}
+.est .big small{display:block;font-size:12px;font-weight:600;color:var(--ash);margin-top:4px}
+.est .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px}
+.est .kv div{padding:9px 10px;border-radius:10px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2)}
+.est .kv span{display:block;font-size:11.5px;color:var(--ash)}
+.est .kv b{font-size:17px;font-variant-numeric:tabular-nums}
+.est .spark{display:flex;align-items:flex-end;gap:3px;height:34px;margin-top:14px}
+.est .spark i{flex:1;background:var(--gold);opacity:.75;border-radius:2px 2px 0 0;min-height:2px}
+.est .spark i.z{background:var(--edge2);opacity:1}
+.est .cap{font-size:11.5px;color:var(--ash);margin-top:4px;display:flex;justify-content:space-between}
+.est h4{margin:16px 0 6px;font-size:13px;color:var(--ash);font-weight:600}
+.est .stg{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;font-size:13.5px}
+.est .stg .ebar{height:8px;border-radius:4px;background:var(--abyss);overflow:hidden}
+.est .stg .ebar i{display:block;height:100%;background:var(--gold)}
+.est .stg .best{color:var(--gold2);font-weight:700}
+.est .stg em{font-style:normal;color:var(--ash);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.est .none{font-size:13px;color:var(--ash);margin-top:8px;line-height:1.5}
 .ess{padding:14px 16px;border-radius:var(--r);background:linear-gradient(160deg,var(--iron2),var(--iron));
  box-shadow:inset 0 0 0 1px var(--edge)}
 .ess .hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -239,6 +261,7 @@ summary::-webkit-details-marker{display:none}
  <div id="kList"></div>
 </section>
 <section class="items" id="itemsView" hidden>
+ <div class="est" id="essStat" hidden></div>
  <div class="ess" id="essSum" hidden></div>
  <div class="chips" id="chips"></div>
  <div id="list"></div>
@@ -460,8 +483,26 @@ function loadStars(cb){
 function mkStars(){starOf={};Object.keys(keep.classes||{}).forEach(function(c){keep.classes[c].forEach(function(x){starOf[x.n]=Math.max(starOf[x.n]||0,x.star||0)})})}
 function starsOf(x){return starOf[x.name]||starOf[x.kind]||starOf[x.raw]||0}
 function starHtml(st){return '<span class="stars" role="img" aria-label="중요도 '+st+'/5"><i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span>"}
+function loadEssStat(){
+ fetch("/api/essences").then(function(r){return r.json()}).then(drawEssStat).catch(function(){});
+}
+function fmtN(v,d){return v==null?"–":(Math.round(v*Math.pow(10,d||0))/Math.pow(10,d||0)).toString()}
+function drawEssStat(d){
+ var el=$("essStat");
+ if(!d||!d.runs){el.innerHTML='<div class="etop"><div><b>정수 통계</b><small>판마다 대장장이에서 정수 수량을 읽어 늘어난 만큼 셉니다.</small></div></div><div class="none">아직 기록이 없습니다. 두 판 이상 돌면 판당·시간당 정수가 여기에 나옵니다.</div>';el.hidden=false;return}
+ var t=d.today||{},rec=(d.recent||[]).slice().reverse(),mx=Math.max.apply(null,rec.map(function(x){return x.gained}).concat([1]));
+ var stg=(d.stages||[]),best=stg.length&&stg[0].per_hour?stg[0].stage:null,smx=Math.max.apply(null,stg.map(function(x){return x.per_hour||0}).concat([1]));
+ el.innerHTML='<div class="etop"><div><b>정수 통계</b><small>최근 3일 · '+d.runs+'판</small></div><div class="big">'+fmtN(d.per_hour,1)+'<small>시간당 개수</small></div></div>'+
+  '<div class="kv"><div><span>오늘 얻음</span><b>'+(t.gained||0)+'개</b></div><div><span>판당</span><b>'+fmtN(d.per_run,2)+'개</b></div><div><span>판당 시간</span><b>'+(d.min_per_run!=null?fmtN(d.min_per_run,1)+"분":"–")+'</b></div></div>'+
+  (rec.length?'<div class="spark" aria-label="최근 판별 얻은 정수">'+rec.map(function(x){return '<i class="'+(x.gained?"":"z")+'" style="height:'+(x.gained?Math.max(8,100*x.gained/mx):6)+'%" title="'+x.gained+'개"></i>'}).join("")+'</div><div class="cap"><span>'+rec.length+'판 전</span><span>최근 판</span></div>':"")+
+  (stg.length?'<h4>단계별 (시간당 많은 순)</h4><div class="stg">'+stg.map(function(x){
+   var nm=x.stage?"공포 "+x.stage+"단계":"단계 미지정";
+   return '<span class="'+(x.stage===best?"best":"")+'">'+nm+'</span><span class="ebar"><i style="width:'+(100*(x.per_hour||0)/smx)+'%"></i></span><em>'+fmtN(x.per_hour,1)+'/시간 · '+fmtN(x.per_run,2)+'/판 · '+x.runs+'판</em>'}).join("")+"</div>":"");
+ el.hidden=false;
+}
 function loadItems(){
  if(!keep&&!starTried){starTried=true;loadStars(loadItems);return}
+ loadEssStat();
  fetch("/api/items").then(function(r){return r.json()}).then(function(d){items=d.items||[];drawItems()}).catch(function(){});
 }
 function drawEss(ess){
