@@ -279,9 +279,23 @@ class Remote:
                     ok, how = scorer.status()
                     body = json.dumps({"order": scorer.KEEP_LIST.get("order", []),
                                        "classes": scorer.KEEP_LIST.get("classes", {}),
-                                       "pics": sorted(scorer.keep_pictures()), "ocr": ok, "ocr_text": how},
+                                       "pics": sorted(scorer.keep_pictures()), "ocr": ok, "ocr_text": how,
+                                       "min_star": scorer.KEEP_MIN_STAR[0]},
                                       ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
+                if u.path == "/api/keepstar" and method == "POST":
+                    from . import scorer
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        star = max(1, min(5, int(d.get("star", 1))))
+                    except Exception:
+                        return self._send(400, b'{"error":"star"}', "application/json")
+                    scorer.set_min_star(star)            # at once; the PC side saves it
+                    cb = getattr(remote, "set_keep_star", None)
+                    if cb:
+                        cb(star)
+                    return self._send(200, json.dumps({"star": star}).encode("utf-8"), "application/json")
                 if u.path == "/api/items" and method == "GET":
                     body = json.dumps({"items": read_items(remote.base), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")

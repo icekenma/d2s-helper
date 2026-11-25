@@ -180,6 +180,18 @@ summary::-webkit-details-marker{display:none}
 .ki .nm.t-u{color:#c9a86c}.ki .nm.t-s{color:#5fd05f}.ki .nm.t-r{color:var(--gold2)}
 .ki .stars{margin-left:8px;font-size:12px;letter-spacing:1px;color:var(--dim);font-weight:400;vertical-align:1px;white-space:nowrap}
 .ki .stars i{font-style:normal;color:var(--gold2)}
+.kmin{padding:12px 14px 14px;border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.kmin-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+.kmin-hd b{font-size:14px}
+.kmin-hd span{font-size:12.5px;color:var(--ash)}
+.kseg{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.kseg button{border:0;border-radius:10px;padding:10px 0 9px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);color:var(--ash);
+ font-weight:700;font-size:14px;line-height:1.15}
+.kseg button small{display:block;font-size:10.5px;font-weight:600;margin-top:2px;color:var(--dim)}
+.kseg button[aria-checked=true]{background:linear-gradient(var(--gold2),var(--gold));color:#1b130a;box-shadow:0 2px 10px rgba(210,163,74,.25)}
+.kseg button[aria-checked=true] small{color:#4a3510}
+.ki.off{opacity:.45}
+.ki.off .how::before{display:none}
 .ki .sb{grid-column:1;font-size:12.5px;color:var(--ash)}
 .ki .how{grid-row:1/span 2;grid-column:2;font-size:11.5px;color:var(--ash);display:flex;align-items:center;gap:5px;white-space:nowrap}
 .ki .how::before{content:"";width:7px;height:7px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--dim)}
@@ -204,6 +216,10 @@ summary::-webkit-details-marker{display:none}
 </div></div>
 <section class="items keep" id="keepView" hidden>
  <div class="kp" id="kpNote"></div>
+ <div class="kmin">
+  <div class="kmin-hd"><b>보관 기준</b><span id="kminN"></span></div>
+  <div class="kseg" role="radiogroup" aria-label="보관할 최소 별 개수" id="kSeg"></div>
+ </div>
  <div class="chips" id="kChips"></div>
  <div id="kList"></div>
 </section>
@@ -464,6 +480,14 @@ function drawKeep(){
  $("kpNote").innerHTML="<b>주우면 보관함으로 가는 아이템</b>여기 있는 아이템은 팔지도, 수집품에 등록하지도 않고 대장장이에서 보관함에 넣습니다. 모든 직업의 목록이 함께 적용됩니다. 별은 중요도(★5가 최상)입니다."+
   '<div class="ocr'+(keep.ocr?"":" off")+'"><i></i><span>'+(keep.ocr?"글자 인식이 켜져 있어 목록의 "+ntot+"개를 모두 이름으로 알아봅니다.":
   "글자 인식(Tesseract)이 꺼져 있어 <b style=\"display:inline;color:var(--gold2)\">금색 점</b>이 있는 "+npic+"개만 그림으로 알아봅니다. 나머지 "+(ntot-npic)+"개는 Tesseract를 설치하면 알아봅니다.")+"</span></div>";
+ var mn=keep.min_star||1,keepN=0;
+ var bestStar={};Object.keys(keep.classes).forEach(function(c){keep.classes[c].forEach(function(x){bestStar[x.n]=Math.max(bestStar[x.n]||0,x.star||0)})});
+ Object.keys(bestStar).forEach(function(n){if(bestStar[n]>=mn)keepN++});
+ $("kminN").textContent="별 "+mn+"개 이상만 보관 · "+ntot+"개 중 "+keepN+"개";
+ $("kSeg").innerHTML=[1,2,3,4,5].map(function(i){return '<button type="button" role="radio" aria-checked="'+(i===mn)+'" data-s="'+i+'">★'+i+"<small>"+(i===1?"전부":"이상")+"</small></button>"}).join("");
+ Array.prototype.forEach.call($("kSeg").children,function(b){b.onclick=function(){
+  var n=+b.dataset.s;if(n===mn)return;keep.min_star=n;drawKeep();
+  post("/api/keepstar",{star:n}).catch(function(){})}});
  $("kChips").innerHTML=(keep.order||[]).map(function(c){return '<button type="button" data-c="'+esc(c)+'" aria-pressed="'+(c===kcls)+'">'+esc(c)+"<b>"+(keep.classes[c]||[]).length+"</b></button>"}).join("");
  Array.prototype.forEach.call($("kChips").children,function(b){b.onclick=function(){kcls=b.dataset.c;drawKeep()}});
  var list=keep.classes[kcls]||[],html="";
@@ -471,9 +495,10 @@ function drawKeep(){
   var g=list.filter(function(x){return x.t===t}).sort(function(a,b){return (b.star||0)-(a.star||0)});if(!g.length)return;
   html+='<div class="kg"><b>'+t+"</b><span>"+g.length+"개</span></div>"+g.map(function(x){
    var st=x.star||0;
-   return '<div class="ki"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
+   var off=(bestStar[x.n]||0)<mn;
+   return '<div class="ki'+(off?" off":"")+'"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
     '<i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span></span>"+'<span class="sb">'+esc(x.b+" · "+x.why)+
-    '</span><span class="how'+(pics[x.n]?" pic":"")+'">'+(pics[x.n]?"그림":"글자")+"</span></div>"}).join("");
+    '</span><span class="how'+(!off&&pics[x.n]?" pic":"")+'">'+(off?"보관 안 함":pics[x.n]?"그림":"글자")+"</span></div>"}).join("");
  });
  $("kList").innerHTML=html;
 }

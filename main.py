@@ -95,6 +95,7 @@ class App(tk.Tk):
         sorter.load_marks(BASE)
         spot.load(BASE)
         scorer.load(BASE, "")
+        scorer.set_min_star(self.cfg.get("keep_star", 1))
         self._build()
         self._share()
         self._remote()
@@ -358,6 +359,7 @@ class App(tk.Tk):
                                  lambda: self.q.put(("scan", None)),
                                  io_lock=self.io_lock, title=TITLE)
             self.remote.set_stage = lambda n: self.q.put(("stage", n))
+            self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -470,6 +472,12 @@ class App(tk.Tk):
                         self.l_runs.configure(text=str(self.runs))
                 elif kind == "stage":
                     self._set_stage(int(p or 0))
+                elif kind == "keep_star":
+                    n = max(1, min(5, int(p or 1)))
+                    scorer.set_min_star(n)
+                    self.cfg["keep_star"] = n
+                    save_cfg(self.cfg)
+                    self._say("휴대폰에서 보관 기준 변경: 보관 목록 중 별 %d개 이상만 보관함으로" % n)
                 elif kind == "scan":
                     self._gear_scan()
                 elif kind == "restart":

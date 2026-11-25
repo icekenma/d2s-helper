@@ -264,6 +264,20 @@ KEEP_LIST = {"order": [], "classes": {}}     # assets/keep_list.json: what to ke
 KEEP_SET = set()                             # every name in it
 _keep_pics = []                              # (name, float32 picture of the name line, layout scale)
 KEEP_PIC_NEED = 0.76
+STAR = {}                                    # name -> importance 1..5 (highest over the classes)
+KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
+
+
+def set_min_star(n):
+    KEEP_MIN_STAR[0] = max(1, min(5, int(n or 1)))
+
+
+def _set_keep(out, nm):
+    """A keep-list name was recognised: kept only when rated at least KEEP_MIN_STAR stars."""
+    st = STAR.get(nm, 5)
+    out["star"] = st
+    if st >= KEEP_MIN_STAR[0]:
+        out["keep_name"], out["kind"] = nm, nm
 
 
 def load_keep(base):
@@ -274,9 +288,11 @@ def load_keep(base):
             KEEP_LIST.update(json.load(f))
     except (OSError, ValueError):
         pass
+    STAR.clear()
     for items in KEEP_LIST.get("classes", {}).values():
         for it in items:
             KEEP_SET.add(it["n"])
+            STAR[it["n"]] = max(STAR.get(it["n"], 0), int(it.get("star", 5)))
     KEEP_SET.update(KEEP_NAMES)
     try:
         with open(os.path.join(base, "assets", "keep_names.json"), "r", encoding="utf-8") as f:
@@ -355,7 +371,7 @@ def evaluate(crop, s, keep_words=None):
     is_charm = word("부적")
     for nm, need in KEEP_NAMES.items():
         if nm in spot._words and any(spot.score(m, nm) >= need for m in head):
-            out["keep_name"], out["kind"] = nm, nm
+            _set_keep(out, nm)
             break
     if not out.get("keep_name") and color in ("gold", "green") and _keep_pics:
         try:
@@ -363,7 +379,7 @@ def evaluate(crop, s, keep_words=None):
         except Exception:
             nm, v = None, 0.0
         if nm and v >= KEEP_PIC_NEED:
-            out["keep_name"], out["kind"] = nm, nm
+            _set_keep(out, nm)
     if color in ("gold", "green"):
         out["charm"] = is_charm
         if not out.get("keep_name"):
@@ -398,7 +414,7 @@ def evaluate(crop, s, keep_words=None):
         if color in ("gold", "green") and not out.get("keep_name"):
             nm = keep_by_text(name)
             if nm:
-                out["keep_name"], out["kind"] = nm, nm
+                _set_keep(out, nm)
         if color not in ("gold", "green"):
             if not out["keep"] and (ends_with(name, "룬") or ends_with(name, "정수") or has_word(name, "열쇠")
                                      or has_word(name, "주얼")):
@@ -425,7 +441,7 @@ def evaluate(crop, s, keep_words=None):
             return out
         out["name"] = item["n"]
         if item["n"] in KEEP_SET and not out.get("keep_name"):
-            out["keep_name"], out["kind"] = item["n"], item["n"]
+            _set_keep(out, item["n"])
         out["top"] = bool(item.get("top"))
         out["charm"] = out["charm"] or bool(item.get("charm"))
         nums = [n for l in lines[1:] if l["color"] in ("blue", "red") and not l.get("label") for n in l["numbers"]]
