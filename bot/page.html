@@ -248,6 +248,28 @@ summary::-webkit-details-marker{display:none}
 .hkey i{width:8px;height:8px;border-radius:2px}
 .hkey b{color:var(--bone)}
 .hset{margin-top:10px;border:0;background:none;color:var(--gold2);font-size:12.5px;font-weight:700;padding:6px 0}
+/* essence alert */
+.awarn{padding:12px 14px;border-radius:14px;font-size:13.5px;line-height:1.45;color:#ffe9e4;
+ background:linear-gradient(160deg,#5a1f1a,#2a1210);box-shadow:inset 0 0 0 1px var(--blood2);animation:warnp 2s ease-in-out infinite}
+.awarn b{display:block;font-size:15px;color:#fff}
+@keyframes warnp{50%{box-shadow:inset 0 0 0 1px var(--blood2),0 0 18px rgba(196,66,58,.45)}}
+.alrt{padding:14px 16px;border-radius:18px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.ahd{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.ahd b{display:block;font-size:14px}
+.ahd span{display:block;font-size:12px;color:var(--ash);margin-top:2px}
+.asw{flex:none;border:0;width:50px;height:30px;border-radius:15px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);position:relative;padding:0}
+.asw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--dim);transition:transform .2s,background .2s}
+.asw[aria-checked=true]{background:rgba(210,163,74,.35)}
+.asw[aria-checked=true] i{transform:translateX(20px);background:var(--gold2)}
+.aseg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.aseg button{border:0;border-radius:10px;padding:9px 0;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);color:var(--ash);font-weight:700;font-size:13.5px}
+.aseg button[aria-checked=true]{background:linear-gradient(var(--gold2),var(--gold));color:#1b130a}
+.ahow{margin:12px 0 0;padding-left:20px;font-size:12.5px;color:var(--ash);line-height:1.6}
+.ahow b{color:var(--bone);-webkit-user-select:text;user-select:text}
+.abtn{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.abtn button{border:0;border-radius:12px;height:42px;font-weight:700;color:var(--gold2);background:linear-gradient(#2a241f,#1a1613);box-shadow:inset 0 0 0 1px var(--gold)}
+.abtn button+button{color:var(--bone);box-shadow:inset 0 0 0 1px var(--edge2)}
+@media (prefers-reduced-motion:reduce){.awarn{animation:none}.asw i{transition:none}}
 /* the strip of runs */
 .strip{padding:12px 14px 10px;border-radius:18px;background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 .strip .sh{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ash)}
@@ -421,6 +443,7 @@ summary::-webkit-details-marker{display:none}
  <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
   <stop offset="0" stop-color="#f0c96f"/><stop offset="1" stop-color="#ff7a2f"/></linearGradient></defs></svg>
  <div class="rfresh" id="rFresh" role="status" aria-live="polite"><i></i><span id="rFreshT">불러오는 중</span></div>
+ <div class="awarn" id="aWarn" role="alert" hidden></div>
  <div class="hero idle" id="rHero">
   <div class="embers" id="rEmb" aria-hidden="true"></div>
   <div class="ring"><svg viewBox="0 0 128 128" aria-hidden="true"><circle class="tr" cx="64" cy="64" r="54"/>
@@ -449,6 +472,17 @@ summary::-webkit-details-marker{display:none}
    <span><i style="border-top:1px dashed var(--blood2);height:0;border-radius:0"></i>판 시간 제한</span></div>
  </div>
  <div class="ins" id="rIns"></div>
+ <div class="alrt" id="aBox">
+  <div class="ahd"><div><b>정수 경고 알림</b><span id="aSub">도우미가 도는 동안 정수가 안 늘면 휴대폰으로 알림</span></div>
+   <button type="button" class="asw" id="aOn" role="switch" aria-checked="false" aria-label="정수 경고 알림"><i></i></button></div>
+  <div class="aseg" role="radiogroup" aria-label="확인 간격" id="aMin"></div>
+  <ol class="ahow">
+   <li>휴대폰에 <b>ntfy</b> 앱을 설치합니다 (무료, App Store).</li>
+   <li>앱에서 + 를 눌러 주제 <b id="aTopic">-</b> 를 구독합니다.</li>
+   <li>아래 '시험 알림'을 눌러 알림이 오는지 확인합니다.</li>
+  </ol>
+  <div class="abtn"><button type="button" id="aTest">시험 알림</button><button type="button" id="aCopy">주제 복사</button></div>
+ </div>
  <div id="rRows"></div>
  <button class="clear" type="button" id="clearRuns">판 기록 비우기</button>
 </section>
@@ -546,7 +580,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
   if(s.version){if(pageVer&&s.version!==pageVer){location.reload();return}pageVer=s.version}
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);alertFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -560,6 +594,26 @@ var fastOn=false,fastBusy=0;
 function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));if($("fx"))$("fx").className="fx"+(fastOn?"":" off");
  $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 "+mss(CD.limit||160)+"이 지나면 바로 다음 판 · 아래 확장만 함":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+/* essence alert: on/off, minutes, test */
+var AL=null,alBusy=0;
+function alertFrom(s){if(!s.alert||Date.now()<alBusy)return;AL=s.alert;alertDraw()}
+function alertDraw(){
+ if(!AL)return;
+ $("aOn").setAttribute("aria-checked",String(!!AL.on));$("aTopic").textContent=AL.topic||"-";
+ $("aMin").innerHTML=[20,30,45,60].map(function(m){return '<button type="button" role="radio" data-m="'+m+'" aria-checked="'+(AL.minutes===m)+'">'+m+"분</button>"}).join("");
+ Array.prototype.forEach.call($("aMin").children,function(b){b.onclick=function(){AL.minutes=+b.dataset.m;alBusy=Date.now()+4000;alertDraw();post("/api/alert",{minutes:AL.minutes})}});
+ var sub=AL.on?AL.minutes+"분마다 확인 · 정수가 0개면 알림":"꺼짐";
+ if(AL.at)sub+=" · 마지막 확인 "+hm(AL.at)+" ("+AL.gain+"개)";
+ if(AL.err)sub+=" · 알림 보내기 실패";
+ $("aSub").textContent=sub;
+ var w=$("aWarn");w.hidden=!AL.warn;
+ if(AL.warn)w.innerHTML="<b>"+AL.minutes+"분 동안 불타는 정수가 늘지 않았습니다</b>도우미는 켜져 있지만 보스를 잡지 못하고 있습니다. 게임 화면을 확인하세요."+(AL.sent_at?" ("+hm(AL.sent_at)+" 알림 보냄)":"");
+}
+$("aOn").onclick=function(){if(!AL)return;AL.on=!AL.on;alBusy=Date.now()+4000;alertDraw();post("/api/alert",{on:AL.on})};
+$("aTest").onclick=function(){post("/api/alert/test");var b=$("aTest");b.textContent="보냄 · 알림 확인";setTimeout(function(){b.textContent="시험 알림"},3000)};
+$("aCopy").onclick=function(){if(!AL)return;var t=AL.topic;
+ (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject()).then(function(){$("aCopy").textContent="복사함"},function(){prompt("주제를 복사하세요",t)});
+ setTimeout(function(){$("aCopy").textContent="주제 복사"},2500)};
 /* fast mode extras: each a toggle, sent at once */
 var fx={count:false,jewel:false,unique:false},fxBusy=0;
 function fxDraw(){$("fx").className="fx"+(fastOn?"":" off");Array.prototype.forEach.call($("fx").children,function(b){b.setAttribute("aria-pressed",String(!!fx[b.dataset.k]))})}

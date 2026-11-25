@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from pynput import keyboard
 
-from bot import scorer, sorter, spot, win
+from bot import alert, scorer, sorter, spot, win
 from bot.engine import Engine, STAGE_LIMIT, stage_limit, limit_text
 from bot.keyrec import KeyRecorder
 from bot.picker import PickerThread
@@ -103,6 +103,7 @@ class App(tk.Tk):
         scorer.load(BASE, "")
         scorer.set_min_star(self.cfg.get("keep_star", 1))
         sorter.RUN_INFO["stage"] = int(self.cfg.get("stage", 0) or 0)
+        self.watch = alert.Watch(self.cfg, save_cfg, lambda m: self.q.put(("log", m)))
         self._build()
         self._share()
         self._remote()
@@ -191,6 +192,17 @@ class App(tk.Tk):
             self.v_ext[k] = v
             ttk.Checkbutton(xf, text=label, variable=v,
                             command=lambda k=k: self._set_fast_ext({k: self.v_ext[k].get()}, "PC")).pack(side="left", padx=(8, 0))
+
+        af = tk.Frame(self, bg=BG)
+        af.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(af, text="정수 경고", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
+        self.v_alert = tk.BooleanVar(value=bool(self.watch.conf.get("on")))
+        ttk.Checkbutton(af, text="%d분 동안 정수가 안 늘면 휴대폰 알림" % self.watch.state()["minutes"],
+                        variable=self.v_alert,
+                        command=lambda: self._set_alert({"on": self.v_alert.get()}, "PC")).pack(side="left", padx=8)
+        ttk.Button(af, text="시험 알림", command=self.watch.test).pack(side="left")
+        tk.Label(af, text="ntfy 앱에서 구독: %s" % self.watch.conf["topic"], bg=BG, fg=DIM,
+                 font=(FONT, 9)).pack(side="left", padx=10)
 
         kf = tk.Frame(self, bg=BG)
         kf.pack(fill="x", padx=20, pady=(0, 10))
@@ -337,6 +349,24 @@ class App(tk.Tk):
                 self.picker.p.wp_frontier = False
         self._say("휴대폰에서 단계 변경: %s" % ("공포 영역 %d단계 반복 (다음 판부터)" % stage if stage
                                            else "단계 미지정 (목록 맨 위 새 단계)"))
+        self._share()
+
+    def _set_alert(self, changes, who="휴대폰"):
+        c = self.watch.conf
+        if "on" in changes:
+            c["on"] = bool(changes["on"])
+        if "minutes" in changes:
+            try:
+                c["minutes"] = max(10, min(180, int(changes["minutes"])))
+            except (TypeError, ValueError):
+                pass
+        save_cfg(self.cfg)
+        try:
+            self.v_alert.set(bool(c["on"]))
+        except Exception:
+            pass
+        self._say("%s에서 정수 경고 알림 %s" % (who, "켬: %d분 동안 불타는 정수가 안 늘면 휴대폰(ntfy '%s')으로 알림"
+                                           % (int(c.get("minutes") or 30), c["topic"]) if c["on"] else "끔"))
         self._share()
 
     def _fast_ext(self):
@@ -591,7 +621,7 @@ class App(tk.Tk):
         self.shared = {"stage_left": left, "stage_limit": self._limit(), "running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
-                       "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext()}
+                       "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state()}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -606,6 +636,8 @@ class App(tk.Tk):
             self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
             self.remote.set_fast = lambda on: self.q.put(("fast", on))
             self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
+            self.remote.set_alert = lambda d: self.q.put(("alert", d))
+            self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -726,6 +758,10 @@ class App(tk.Tk):
                     self._set_fast(p)
                 elif kind == "fast_ext":
                     self._set_fast_ext(p)
+                elif kind == "alert":
+                    self._set_alert(p)
+                elif kind == "alert_test":
+                    self.watch.test()
                 elif kind == "keep_star":
                     n = max(1, min(5, int(p or 1)))
                     scorer.set_min_star(n)
@@ -753,6 +789,10 @@ class App(tk.Tk):
         self._countdown()
         self._share()
         self._maybe_restart()
+        try:
+            self.watch.check(self.engine is not None)
+        except Exception:
+            pass
         if self.engine is not None and self.engine.state.pop("halt_now", False):
             self.halt()
         try:

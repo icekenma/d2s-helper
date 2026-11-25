@@ -314,6 +314,22 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/alert" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        d = {k: d[k] for k in ("on", "minutes") if k in d}
+                    except Exception:
+                        return self._send(400, b'{"error":"alert"}', "application/json")
+                    cb = getattr(remote, "set_alert", None)
+                    if cb and d:
+                        cb(d)
+                    return self._send(200, json.dumps(d).encode("utf-8"), "application/json")
+                if u.path == "/api/alert/test" and method == "POST":
+                    cb = getattr(remote, "test_alert", None)
+                    if cb:
+                        cb()
+                    return self._send(200, b"{}", "application/json")
                 if u.path == "/api/stash" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
