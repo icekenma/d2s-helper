@@ -362,7 +362,10 @@ class Picker:
         self.nomap_note, self.nomap_since, self.hunt_tab, self.hunt_tab_at = 0.0, None, 0, 0.0
         self.town_fix, self.town_fix_n = 0.0, 0
         self.title_at, self.title_click = 0.0, 0.0
+        self.reroll_n = 0
         self.fast_counted = False
+        self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
+        self.act_name = ""
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -514,6 +517,8 @@ class Picker:
         self.ss_done, self.ss_home, self.tab_tried, self.ss_pts = False, None, 0, None
         self.nomap_since, self.hunt_tab = None, 0
         self.fast_counted = False
+        self.act_done, self.act_t0, self.act_votes, self.act_at, self.rerolling = False, None, [], 0.0, False
+        self.act_name = ""
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
         self.ess_mem, self.ess_note = [], 0.0
@@ -851,6 +856,39 @@ class Picker:
             self._exit_town(now)                       # tidied up at the smith: Esc -> town -> next run
             return
         self._portal_now(frame, s, now, me, portal, mark)
+
+    def _act_check(self, frame, now):
+        """패스트 모드: read the act of the new run a few times; acts 3 and 4 give two essences."""
+        if self.act_t0 is None:
+            self.act_t0, self.act_votes = now, []
+        try:
+            act, sc = sorter.read_act(frame, self.top, os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
+        except Exception:
+            act, sc = None, {}
+        if sc:
+            self.act_votes.append(act if act else (0 if max(sc.values()) < 0.7 else None))
+        v = [x for x in self.act_votes if x is not None]
+        good = sum(1 for x in v if x in (3, 4))
+        bad = sum(1 for x in v if x in (0, 1, 2, 5))
+        if good >= 2:
+            self.act_done, self.reroll_n = True, 0
+            a = max((3, 4), key=lambda k: v.count(k))
+            self.log("패스트 모드: %d막 - 이 판 진행 (정수 2개)" % a)
+        elif bad >= 3 and good == 0:
+            self.act_done = True
+            k = max(set(v), key=v.count)
+            self.act_name = "%d막" % k if k else "1막이나 2막"
+            if self.reroll_n >= 10:
+                self.reroll_n = 0
+                self.log("패스트 모드: %s이지만 10번 연속 다시 뽑아서 이번 판은 그대로 진행" % self.act_name)
+            else:
+                self.reroll_n += 1
+                self.rerolling = True
+                self.exit_tries, self.exit_at = 0, 0.0
+        elif now - self.act_t0 > 7:
+            self.act_done = True
+            self.log("패스트 모드: 몇 막인지 확실히 읽지 못해 이번 판은 그대로 진행 (읽은 값: %s)"
+                     % (", ".join(str(x) for x in self.act_votes[-8:]) or "없음"))
 
     def _fast_count(self):
         """패스트 모드: open the inventory, read the burning-essence stacks, close it again."""
@@ -1262,6 +1300,19 @@ class Picker:
                     gearscan.scan_skills(self.io, self.log)
                 except Exception as e:
                     self.log("스킬 스캔 오류: %s" % e)
+                return
+        if self.rerolling:
+            # 패스트 모드: not act 3 / 4 -> leave at once (Esc -> 저장 후 나가기) and take the waypoint again
+            self.release()
+            if self.exit_tries < 6:
+                self._exit_town(now, "패스트 모드: %s이라 바로 나가서 다시 들어감 (3막·4막만)" % self.act_name)
+                return
+            self.rerolling = False
+        if (self.opts.get("fast_mode") and self.over_since is None and not self.act_done and self.run_text
+                and now - self.terror_last < 2 and now - self.act_at >= 0.3):
+            self.act_at = now
+            self._act_check(frame, now)
+            if self.rerolling:
                 return
         if self.opts.get("fast_mode") and self.over_since is not None and not self.forced:
             # 패스트 모드: the essences come into the bags by themselves when the boss dies. Pick up

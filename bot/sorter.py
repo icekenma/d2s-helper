@@ -266,6 +266,79 @@ def read_burning(io, geo, norm, base_dir):
     return snap, bad
 
 
+_act_digits = []
+
+
+def read_act(frame, top, base_dir):
+    """The act of the run from the run info in the top right ("3막 - 공포 영역 ..."). -> (act or None, scores)
+    The digit is compared at the game's own 800x600 scale (the same picture at any window size)."""
+    from . import spot
+    if not _act_digits:
+        try:
+            with open(os.path.join(base_dir, "assets", "act_digits.json"), "r", encoding="utf-8") as f:
+                for lab, rows in json.load(f):
+                    _act_digits.append((int(lab), np.array(rows, np.float32)))
+        except (OSError, ValueError):
+            return None, {}
+    h, w = frame.shape[:2]
+    s = (h - top) / 600.0
+    crop = frame[top: top + int(0.13 * (h - top)), int(0.60 * w):]
+    m = spot.area_mask(crop, s)
+    best = (0.0, None)
+    for t in spot._words.get("공포영역", ()):
+        if m.shape[0] < t.shape[0] or m.shape[1] < t.shape[1]:
+            continue
+        r = cv2.matchTemplate(m, t, cv2.TM_CCOEFF_NORMED)
+        _, v, _, loc = cv2.minMaxLoc(r)
+        if v > best[0]:
+            best = (v, (loc, t.shape))
+    if best[0] < 0.55:
+        return None, {}
+    (x, y), (th, tw) = best[1]
+    x0 = max(0, x - 110)
+    reg = m[max(0, y - 3):y + th + 3, x0:max(x0 + 1, x - 4)]
+    cols = np.where(reg.sum(0) > 0)[0]
+    runs = []
+    if len(cols):
+        st = pv = cols[0]
+        for c in cols[1:]:
+            if c - pv > 5:
+                runs.append((st, pv))
+                st = c
+            pv = c
+        runs.append((st, pv))
+    word = [r_ for r_ in runs if 22 <= r_[1] - r_[0] <= 44]
+    if not word:
+        return None, {}
+    a, b = word[-1]
+    g = crop.astype(np.float32)
+    txt = np.clip((g.max(axis=2) - 90.0) / 120.0, 0, 1) * ((g.max(axis=2) - g.min(axis=2)) <= 45)
+    lay = cv2.resize(txt, None, fx=1.0 / s, fy=1.0 / s, interpolation=cv2.INTER_AREA)
+    f = 2.0                                     # work scale per layout pixel
+    lx0, lx1 = int((x0 + a) / f) - 1, int((x0 + b) / f) + 2
+    ly0, ly1 = int(max(0, y - 3) / f), int((y + th + 3) / f) + 1
+    wd = lay[max(0, ly0):ly1, max(0, lx0):lx1]
+    if wd.size == 0:
+        return None, {}
+    c2 = np.where(wd.max(0) > 0.35)[0]
+    if not len(c2):
+        return None, {}
+    d = wd[:, c2[0]:c2[0] + 7]
+    r2 = np.where(d.max(1) > 0.35)[0]
+    if not len(r2):
+        return None, {}
+    d = cv2.resize(d[max(0, r2[0] - 1):r2[-1] + 2], (7, 9), interpolation=cv2.INTER_LINEAR)
+    d = d - d.mean()
+    sc = {}
+    for lab, t in _act_digits:
+        tt = t - t.mean()
+        v = float((d * tt).sum() / (np.sqrt((d * d).sum() * (tt * tt).sum()) + 1e-9))
+        sc[lab] = max(sc.get(lab, -1.0), v)
+    order = sorted(sc, key=lambda k: -sc[k])
+    act = order[0] if sc[order[0]] >= 0.8 and (len(order) < 2 or sc[order[0]] - sc[order[1]] >= 0.05) else None
+    return act, sc
+
+
 def run_ended(norm, base_dir):
     """How strongly the lower half shows the run-end hint 'ENTER: 다시 하기' (gold lettering). After a
     death in a new stage the hint reads 'ENTER: 공포 영역 N' instead, so 'ENTER:' alone counts too."""
