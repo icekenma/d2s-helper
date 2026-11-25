@@ -306,6 +306,11 @@ class Engine(threading.Thread):
         quiet_all = now - st["progress_at"]
         self._stage_clock(frame, now)
         si = st.get("stage_in")
+        if si and now - si >= STAGE_LIMIT and st.get("run_text_at") and now - st["run_text_at"] > 10:
+            # the run info ('N막 - 공포 영역 ...') has been gone for a while: already in town, where
+            # '저장 후 나가기' would drop to the game's main menu. Nothing to leave.
+            st["stage_in"] = si = None
+            self.log("4분 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음")
         if si and now - si >= STAGE_LIMIT:
             due, why = True, "포탈로 들어간 지 %d분 지남 (무조건 다음 판)" % int((now - si) // 60)
         elif st.get("over"):

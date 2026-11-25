@@ -360,6 +360,7 @@ class Picker:
         self.portal_first, self.portal_last, self.target_seen = 0.0, 0.0, 0.0
         self.nomap_note, self.nomap_since, self.hunt_tab, self.hunt_tab_at = 0.0, None, 0, 0.0
         self.town_fix, self.town_fix_n = 0.0, 0
+        self.title_at, self.title_click = 0.0, 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -909,6 +910,27 @@ class Picker:
             self.release()
 
     # ---- main -------------------------------------------------------------------------------
+    def _title_screen(self, frame, now):
+        """The game's main menu (after '저장 후 나가기' in town): '오프라인 플레이', then '시작' to play on."""
+        self.title_at = now
+        norm = sorter.Geo(frame).normalize(frame)
+        off = sorter.seen(norm, "title_offline")
+        st = min(sorter.seen(norm, "title_start"), sorter.seen(norm, "title_saves"))
+        if off >= 0.82 and off > st + 0.1:
+            spot_ = sorter.TITLE_OFFLINE
+            what = "게임 첫 화면: '오프라인 플레이' 클릭"
+        elif st >= 0.82 and st > off + 0.1:
+            spot_ = sorter.TITLE_START
+            what = "게임 첫 화면: '시작' 클릭 (이어서 사냥)"
+        else:
+            return False
+        self.release()
+        if now - self.title_click > 3:
+            self.title_click = now
+            self.io.click(*sorter.Geo(frame).raw(*spot_))
+            self.log(what)
+        return True
+
     def _slow(self, now):
         """A few times a second: full-screen checks (where we are, waypoint list, the portal)."""
         frame = self.io.grab()
@@ -927,12 +949,16 @@ class Picker:
         crop = frame[top: top + int(0.13 * (h - top)), int(0.60 * w):]
         mask = spot.area_mask(crop, (h - top) / 600.0)
         self.run_text = mask.sum() > 2000             # "N막 - ..." and the kill count of a run
+        if self.run_text:
+            self.state["run_text_at"] = now
         if self.run_text and spot.score(mask, "공포영역") >= 0.55:
             self.terror_last = now
             self.state["terror_at"] = now
             if not self.terror_ever:
                 self.terror_ever = True
                 self.state["terror_ever"] = True
+        if not self.run_text and now - self.title_at > 1.5 and self._title_screen(frame, now):
+            return True
         if o.get("town_start") and self._wp_menu(frame, s, now):
             if self.over_since is not None:
                 self._new_run()

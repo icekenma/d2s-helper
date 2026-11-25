@@ -27,7 +27,10 @@ PARK = (400, 500)   # empty stone area between the two panels' bottoms
 # name -> (file, expected top-left x, y)
 MARKS = {"subtabs2": ("subtabs2.png", 162, 44), "menu_back": ("menu_back.png", 300, 152), "menu_exit": ("menu_exit.png", 280, 360), "confirm": ("confirm.png", 240, 214), "panel": ("panel.png", 332, 9), "panel2": ("panel2.png", 193, 6), "stash": ("stash.png", 200, 447),
          "personal": ("stash_personal.png", 104, 40), "shop": ("shop.png", 100, 66),
-         "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70)}
+         "inv": ("inv.png", 417, 444), "wp": ("wp.png", 354, 447), "wp_main": ("wp_main.png", 340, 62), "forge": ("forge.png", 253, 306), "forge_mode": ("forge_mode.png", 188, 70),
+         "title_offline": ("title_offline.png", 330, 337), "title_start": ("title_start.png", 330, 296),
+         "title_saves": ("title_saves.png", 330, 337)}
+TITLE_OFFLINE, TITLE_START = (400, 348), (400, 307)      # the game's main menu: '오프라인 플레이', then '시작'
 FORGE_OK = (214, 321)            # the check button under the anvil
 FORGE_MAT_LINE = (150, 91, 340, 110)   # x0, y0, x1, y1 of the material count line
 FORGE_VIEW = (150, 60, 400, 360)
