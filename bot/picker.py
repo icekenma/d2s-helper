@@ -358,7 +358,7 @@ class Picker:
         self.pos, self.odo_prev, self.odo_win, self.goal_mm, self.click_pos, self.click_mm = None, None, None, (0.0, 0.0), None, (0.0, 0.0)
         self.why, self.why_since, self.why_note = "", 0.0, 0.0
         self.portal_first, self.portal_last, self.target_seen = 0.0, 0.0, 0.0
-        self.nomap_note = 0.0
+        self.nomap_note, self.nomap_since, self.hunt_tab, self.hunt_tab_at = 0.0, None, 0, 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -508,6 +508,7 @@ class Picker:
         self.state["route_done"], self.state["route_len"] = False, 0.0
         self.sweep_pts, self.sweep_done = None, False
         self.ss_done, self.ss_home, self.tab_tried, self.ss_pts = False, None, 0, None
+        self.nomap_since, self.hunt_tab = None, 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
         self.ess_mem, self.ess_note = [], 0.0
@@ -1262,11 +1263,27 @@ class Picker:
                     self.log("미니맵은 못 읽었지만 화면에 포탈이 계속 보여 사냥 종료로 판단")
                     return
             if self.over_since is None:
-                if self.terror_ever and now - self.nomap_note > 60:
-                    self.nomap_note = now
-                    self.log("사냥 중: 미니맵에서 내 위치를 못 찾음 (보스 처치 문구를 기다리는 중)")
+                hunting = self.terror_ever and now - self.terror_last < 5
+                if hunting:
+                    if self.nomap_since is None:
+                        self.nomap_since = now
+                    if self.hunt_tab == 0 and now - self.nomap_since > 20:
+                        # the minimap is most likely switched off (Tab): switch it on once this run
+                        self.hunt_tab, self.hunt_tab_at = 1, now
+                        self.release()
+                        self.io.key(Key.tab)
+                        self.log("사냥 중 미니맵이 안 보여 Tab으로 켬 (보스 처치 확인과 정리에 필요)")
+                    elif self.hunt_tab == 1 and now - self.hunt_tab_at > 4:
+                        self.hunt_tab = 2                 # still nothing: it was not that, put it back
+                        self.io.key(Key.tab)
+                        self.log("Tab을 눌러도 미니맵의 내 위치가 안 보임: 원래대로 되돌림 "
+                                 "(보스 처치는 '차원문이 열렸습니다' 문구와 화면의 포탈로 확인)")
                 self._town(frame, s, now, None)
             return
+        self.nomap_since = None
+        if self.hunt_tab == 1:
+            self.hunt_tab = 3
+            self.log("미니맵 켜짐: 내 위치 확인")
         if self.over_since is None:
             if now - self.gate_at < 30:
                 self.over_since = now
