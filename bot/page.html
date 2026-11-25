@@ -253,7 +253,7 @@ summary::-webkit-details-marker{display:none}
   </div>
   <div class="cd idle" id="cd" hidden aria-live="off">
    <span class="lbl" id="cdLbl">다음 판까지</span>
-   <span class="sub" id="cdSub">사냥터에 들어가면 3분을 셉니다</span>
+   <span class="sub" id="cdSub">사냥터에 들어가면 4분을 셉니다</span>
    <span class="num" id="cdNum">-:--</span>
    <div class="cdbar"><i id="cdBar"></i></div>
   </div>
@@ -313,7 +313,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
   running=s.running;$("runs").textContent=s.runs;stageFrom(s);
-  CD.limit=s.stage_limit||180;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
+  CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
   var last=(s.log||[]).slice(-1)[0]||"";$("sts").textContent=last.replace(/^\S+\s+/,"")||"기록 없음";
@@ -373,10 +373,10 @@ startStream();
 setInterval(function(){if(streamOn&&!document.hidden){stopStream();startStream()}},540000);
 
 /* 3-minute stage countdown: the PC sends what is left, the phone counts down between updates */
-var CD={end:null,limit:180,run:false};
+var CD={end:null,limit:240,run:false};
 function cdDraw(){
  var box=$("cd");box.hidden=!CD.run;if(!CD.run)return;
- if(CD.end==null){box.className="cd idle";$("cdNum").textContent="-:--";$("cdSub").textContent="사냥터에 들어가면 3분을 셉니다";
+ if(CD.end==null){box.className="cd idle";$("cdNum").textContent="-:--";$("cdSub").textContent="사냥터에 들어가면 4분을 셉니다";
   $("cdBar").style.transform="scaleX(0)";return}
  var left=Math.max(0,(CD.end-Date.now())/1000),sec=Math.ceil(left);
  box.className="cd"+(sec<=30?" low":"");

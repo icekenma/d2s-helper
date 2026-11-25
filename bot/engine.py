@@ -22,7 +22,7 @@ for _i in range(1, 13):
     SPECIAL["f%d" % _i] = getattr(Key, "f%d" % _i)
 
 
-STAGE_LIMIT = 180         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
+STAGE_LIMIT = 240         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
 
 
 def grab_client(sct, rect):
