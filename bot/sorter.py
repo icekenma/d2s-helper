@@ -39,7 +39,11 @@ COLOR_KO = {"tan": "황갈색 칸 (유니크로 추정)", "yellow": "노란 칸 
 _marks = {}
 
 
+_snap_base = [None]                       # program folder, for snapshots of screens that could not be read
+
+
 def load_marks(base):
+    _snap_base[0] = base
     for k, (fn, x, y) in MARKS.items():
         fp = os.path.join(base, "assets", fn)
         if not os.path.exists(fp):
@@ -1387,26 +1391,66 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             open_menu()
             time.sleep(0.6)
 
-    open_menu()
-    time.sleep(0.9)
-    f, n = norm_now()
+    def menu_up(n_):
+        return confirm_shown(n_) or menu_open(n_)
+
+    def esc_and_look():
+        open_menu()
+        time.sleep(0.9)
+        f_, n_ = norm_now()
+        if n_ is not None and not menu_up(n_):
+            time.sleep(0.8)                       # (it may open a little late)
+            f_, n_ = norm_now()
+        return f_, n_
+
+    def blind_try(f_, round_):
+        """The menu may be up without being recognised: click where its "저장 후 나가기" is anyway
+        (with no menu that click only walks a step). -> wait_left() result"""
+        if round_ == 2 and _snap_base[0]:
+            try:
+                save_snap(_snap_base[0], f_, "Esc 메뉴 인식 실패")
+            except Exception:
+                pass
+        bx, by = Geo(f_).raw(*MENU_EXIT)
+        io.move(bx, by)
+        time.sleep(0.35)
+        io.click(bx, by)
+        time.sleep(0.3)
+        io.click(bx, by)
+        r_ = wait_left(3.5)
+        log("Esc를 눌렀지만 메뉴가 보이지 않음: '저장 후 나가기' 자리를 그냥 클릭 (%d번째) -> %s%s" % (
+            round_, {"left": "마을로 나감", "confirm": "확인 창", "menu": "메뉴가 보임", "game": "게임 그대로"}[r_],
+            " (화면 저장함)" if round_ == 2 and _snap_base[0] else ""))
+        return r_
+
+    blind = False
+    f, n = esc_and_look()
     if n is None:
         return False
-    if confirm_shown(n):
-        pass                                      # the box is already up (left from a try before)
-    elif not menu_open(n):
-        time.sleep(0.8)                           # (it may open a little late)
-        f, n = norm_now()
-        if n is None:
-            return False
-    if not confirm_shown(n) and not menu_open(n):
-        log("Esc를 눌렀지만 메뉴가 보이지 않음")
+    for round_ in (1, 2):
+        if menu_up(n):
+            if round_ == 2:
+                log("Esc를 한 번 더 눌러 메뉴가 열림 (열린 창이 있었음)")
+            break
+        r = blind_try(f, round_)
+        if r == "left":
+            return True
+        if r == "confirm":
+            blind = True
+            break
+        if round_ == 1:
+            # an open window (inventory, waypoint list, smith) took that Esc, or the menu was already up
+            # and that Esc closed it: one more Esc
+            f, n = esc_and_look()
+            if n is None:
+                return False
+    else:
         close_all()
         return False
     geo = Geo(f)
     x, y = geo.raw(*MENU_EXIT)
     use_keys = has_keys and attempt % 2 == 1      # 1, 3, 5: keyboard / 2, 4, 6: mouse
-    if not confirm_shown(n):
+    if not blind and not confirm_shown(n):
         if use_keys:
             row = lit_row(n)
             if row is not None:

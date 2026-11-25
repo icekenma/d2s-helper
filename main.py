@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 from pynput import keyboard
 
 from bot import scorer, sorter, spot, win
-from bot.engine import Engine
+from bot.engine import Engine, STAGE_LIMIT
 from bot.keyrec import KeyRecorder
 from bot.picker import PickerThread
 from bot.record import Recorder
@@ -142,6 +142,12 @@ class App(tk.Tk):
         self.l_state.pack(anchor="w")
         self.b_run = ttk.Button(top, text="시작 (F8)", style="Gold.TButton", command=self.toggle)
         self.b_run.pack(side="right")
+        cd = tk.Frame(top, bg=BG)                      # 3-minute countdown of the current stage
+        cd.pack(side="right", padx=(0, 14))
+        self.l_cd = tk.Label(cd, text="-:--", bg=BG, fg=DIM, font=(FONT, 24, "bold"))
+        self.l_cd.pack(anchor="e")
+        self.l_cd_note = tk.Label(cd, text="다음 판까지", bg=BG, fg=DIM, font=(FONT, 9))
+        self.l_cd_note.pack(anchor="e")
         tk.Label(top, text="F9 즉시 중지 · F10 장비 스캔 · 게임 창은 뒤에 있어도 됨", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
 
         sf = tk.Frame(self, bg=BG)
@@ -346,8 +352,26 @@ class App(tk.Tk):
         except Exception as e:
             self._say("기록 폴더를 열지 못함: %s (%s)" % (d, e))
 
+    def _stage_left(self):
+        """Seconds left in this stage before the forced move to the next run, or None outside a stage."""
+        if self.engine is None:
+            return None
+        si = self.engine.state.get("stage_in")
+        return None if not si else max(0.0, STAGE_LIMIT - (time.time() - si))
+
+    def _countdown(self):
+        left = self._stage_left()
+        if left is None:
+            self.l_cd.configure(text="-:--", fg=DIM)
+            self.l_cd_note.configure(text="사냥터 들어가면 3분 셈" if self.engine else "다음 판까지")
+        else:
+            sec = int(left + 0.999)
+            self.l_cd.configure(text="%d:%02d" % (sec // 60, sec % 60), fg=RED if sec <= 30 else GOLD)
+            self.l_cd_note.configure(text="다음 판까지" if sec else "다음 판으로 이동 중")
+
     def _share(self):
-        self.shared = {"running": self.engine is not None, "sorting": False, "runs": self.runs,
+        left = self._stage_left()
+        self.shared = {"stage_left": left, "stage_limit": STAGE_LIMIT, "running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0)}
 
@@ -498,6 +522,7 @@ class App(tk.Tk):
         if self.engine and self.started_at:
             s = int(time.time() - self.started_at)
             self.l_state.configure(text="진행 중  %02d:%02d:%02d" % (s // 3600, s % 3600 // 60, s % 60), fg=GREEN)
+        self._countdown()
         self._share()
         self._maybe_restart()
         if self.engine is not None and self.engine.state.pop("halt_now", False):
