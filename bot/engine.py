@@ -11,7 +11,7 @@ import numpy as np
 from pynput.keyboard import Controller as KB, Key
 from pynput.mouse import Button, Controller as Mouse
 
-from . import sorter, vision, win
+from . import runlog, sorter, vision, win
 from .gameio import GameIO
 
 SPECIAL = {
@@ -275,6 +275,7 @@ class Engine(threading.Thread):
         si = st.get("stage_in")
         if si and st.get("run_reset", 0) > si:
             st["stage_in"] = si = None                 # the run ended and starts over
+            runlog.end(now, "다시 시작")
         if frame is None or now - self.stage_at < 0.9:
             return
         self.stage_at = now
@@ -286,12 +287,15 @@ class Engine(threading.Thread):
             if self.out_since is None:
                 self.out_since = now
             elif now - self.out_since >= 1.5:
+                if st.get("stage_in"):
+                    runlog.end(self.out_since, "사냥터를 나감")
                 st["stage_in"] = None                  # town or loading: the next stage starts the clock again
                 self.need_out = False
             return
         self.out_since = None
         if not si and not self.need_out:
             st["stage_in"] = now
+            runlog.start(now, st.get("target", 0))
             self.log("사냥터 입장: %d분 뒤에는 무조건 다음 판으로" % (STAGE_LIMIT // 60))
 
     def _stuck(self, fg, dry, frame=None):
@@ -310,6 +314,7 @@ class Engine(threading.Thread):
             # the run info ('N막 - 공포 영역 ...') has been gone for a while: already in town, where
             # '저장 후 나가기' would drop to the game's main menu. Nothing to leave.
             st["stage_in"] = si = None
+            runlog.end(float(st.get("run_text_at") or now), "사냥터를 나감")
             self.log("4분 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음")
         if si and now - si >= STAGE_LIMIT:
             due, why = True, "포탈로 들어간 지 %d분 지남 (무조건 다음 판)" % int((now - si) // 60)
@@ -345,6 +350,7 @@ class Engine(threading.Thread):
                     st["run_reset"] = time.time()
                     st["progress_at"] = time.time()
                     st["stage_in"] = None
+                    runlog.end(time.time(), why)
                     self.need_out = True
                     st["town_check"] = time.time() + 40      # still in the stage 40 s later: try again
                     self.emit("restart", None)

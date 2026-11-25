@@ -130,6 +130,12 @@ class App(tk.Tk):
         s.configure("Stop.TButton", background=RED, foreground=TEXT, font=(FONT, 11, "bold"), padding=(18, 8))
         s.map("Stop.TButton", background=[("active", "#c7463b")])
         s.configure("TEntry", fieldbackground=PANEL, foreground=TEXT)
+        s.configure("Runs.Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT, rowheight=28,
+                    font=(FONT, 10), borderwidth=0)
+        s.map("Runs.Treeview", background=[("selected", LINE)], foreground=[("selected", GOLD)])
+        s.configure("Runs.Treeview.Heading", background=BG, foreground=DIM, font=(FONT, 9, "bold"),
+                    relief="flat", padding=(6, 6))
+        s.map("Runs.Treeview.Heading", background=[("active", BG)])
 
     def _build(self):
         top = tk.Frame(self, bg=BG)
@@ -190,6 +196,7 @@ class App(tk.Tk):
         self.l_upd.pack(side="left")
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="판 기록", command=self._open_runs).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
@@ -339,6 +346,127 @@ class App(tk.Tk):
                 self.io_lock.release()
                 self.scanning = False
         threading.Thread(target=work, daemon=True).start()
+
+    # ---- run table: every run with its times, essences and the items kept -------------------------
+    def _open_runs(self):
+        w = getattr(self, "runs_win", None)
+        if w is not None and w.winfo_exists():
+            w.deiconify()
+            w.lift()
+            return
+        from bot import runlog
+        w = self.runs_win = tk.Toplevel(self)
+        w.title("판 기록")
+        w.configure(bg=BG)
+        w.geometry("880x620")
+        w.minsize(640, 420)
+        head = tk.Frame(w, bg=BG)
+        head.pack(fill="x", padx=18, pady=(16, 10))
+        tk.Label(head, text="판 기록", bg=BG, fg=TEXT, font=(FONT, 15, "bold")).pack(side="left")
+        live = tk.Label(head, text="", bg=BG, fg=GOLD, font=(FONT, 10, "bold"))
+        live.pack(side="left", padx=12)
+        stats = tk.Frame(w, bg=BG)
+        stats.pack(fill="x", padx=18, pady=(0, 10))
+        cells = {}
+        for key, cap in (("runs", "오늘 판"), ("avg", "판당 평균 시간"), ("ess", "오늘 정수"), ("rate", "정수 / 시간"),
+                         ("items", "오늘 보관·등록")):
+            f = tk.Frame(stats, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            f.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            tk.Label(f, text=cap, bg=PANEL, fg=DIM, font=(FONT, 9)).pack(anchor="w", padx=12, pady=(8, 0))
+            v = tk.Label(f, text="-", bg=PANEL, fg=GOLD if key in ("ess", "rate") else TEXT, font=(FONT, 16, "bold"))
+            v.pack(anchor="w", padx=12, pady=(0, 8))
+            cells[key] = v
+        cols = ("n", "stage", "start", "end", "secs", "ess", "items")
+        heads = {"n": ("판", 50), "stage": ("단계", 60), "start": ("시작", 80), "end": ("종료", 80),
+                 "secs": ("걸린 시간", 80), "ess": ("정수", 60), "items": ("보관·등록한 아이템", 380)}
+        body = tk.Frame(w, bg=BG)
+        body.pack(fill="both", expand=True, padx=18)
+        tv = ttk.Treeview(body, columns=cols, show="headings", style="Runs.Treeview", height=12)
+        for c in cols:
+            tv.heading(c, text=heads[c][0], anchor="w" if c == "items" else "center")
+            tv.column(c, width=heads[c][1], anchor="w" if c == "items" else "center", stretch=(c == "items"))
+        sb = ttk.Scrollbar(body, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        tv.tag_configure("live", foreground=GOLD)
+        tv.tag_configure("odd", background="#221c18")
+        tk.Label(w, text="선택한 판의 아이템", bg=BG, fg=DIM, font=(FONT, 9, "bold")).pack(anchor="w", padx=18, pady=(12, 4))
+        det = tk.Text(w, height=7, bg=PANEL, fg=TEXT, relief="flat", font=(FONT, 10), padx=12, pady=8,
+                      highlightthickness=1, highlightbackground=LINE, wrap="word")
+        det.pack(fill="x", padx=18, pady=(0, 16))
+        det.tag_configure("dim", foreground=DIM)
+        det.tag_configure("gold", foreground=GOLD)
+        state = {"runs": [], "sel": None}
+
+        def hm(t):
+            return time.strftime("%H:%M:%S", time.localtime(t)) if t else ""
+
+        def dur(sec):
+            sec = int(max(0, sec))
+            return "%d:%02d" % (sec // 60, sec % 60)
+
+        def show_detail(*_):
+            sel = tv.selection()
+            if sel:
+                state["sel"] = int(sel[0])
+            r = next((x for x in state["runs"] if x["n"] == state["sel"]), None)
+            det.configure(state="normal")
+            det.delete("1.0", "end")
+            if r is None:
+                det.insert("end", "표에서 판을 고르면 그 판에 보관·등록한 아이템이 여기에 나옵니다.", "dim")
+            else:
+                det.insert("end", "%d판 · 공포 %s단계 · %s ~ %s · %s · 정수 %s개\n" % (
+                    r["n"], r["stage"] or "-", hm(r["start"]), hm(r["end"]) or "진행 중", dur(r["secs"]),
+                    "-" if r["ess"] is None else r["ess"]), "gold")
+                if not r["items"]:
+                    det.insert("end", "보관·등록한 아이템 없음 (판매한 아이템은 기록하지 않음)", "dim")
+                for x in r["items"]:
+                    det.insert("end", "%s  " % hm(x["t"]), "dim")
+                    det.insert("end", "%s" % x["name"])
+                    det.insert("end", "  %s%s\n" % (x["action"], (" · " + x["tab"] + " 탭") if x["tab"] else ""), "dim")
+            det.configure(state="disabled")
+
+        tv.bind("<<TreeviewSelect>>", show_detail)
+
+        def refresh():
+            if not w.winfo_exists():
+                return
+            try:
+                runs = runlog.build(300)
+            except Exception:
+                runs = []
+            state["runs"] = runs
+            today0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+            td = [r for r in runs if r["start"] >= today0]
+            done = [r for r in td if not r["live"]]
+            cells["runs"].configure(text="%d판" % len(td))
+            cells["avg"].configure(text=dur(sum(r["secs"] for r in done) / len(done)) if done else "-")
+            e = [r["ess"] for r in td if r["ess"] is not None]
+            cells["ess"].configure(text="%d개" % sum(e) if e else "-")
+            secs = sum(r["secs"] for r in done if r["ess"] is not None)
+            cells["rate"].configure(text="%.1f개" % (sum(r["ess"] for r in done if r["ess"] is not None) * 3600.0 / secs)
+                                    if secs > 60 else "-")
+            cells["items"].configure(text="%d개" % sum(len(r["items"]) for r in td))
+            cur = runs[0] if runs and runs[0]["live"] else None
+            live.configure(text=("● %d판 진행 중 %s" % (cur["n"], dur(cur["secs"]))) if cur else "")
+            y = tv.yview()
+            tv.delete(*tv.get_children())
+            for i, r in enumerate(runs):
+                names = ", ".join(x["name"] for x in r["items"][:4]) + (" 외 %d개" % (len(r["items"]) - 4)
+                                                                         if len(r["items"]) > 4 else "")
+                tags = ("live",) if r["live"] else (("odd",) if i % 2 else ())
+                tv.insert("", "end", iid=str(r["n"]), tags=tags, values=(
+                    r["n"], r["stage"] or "-", hm(r["start"]), "진행 중" if r["live"] else hm(r["end"]),
+                    dur(r["secs"]), "-" if r["ess"] is None else r["ess"],
+                    ("%d개 · %s" % (len(r["items"]), names)) if r["items"] else ""))
+            if state["sel"] is not None and tv.exists(str(state["sel"])):
+                tv.selection_set(str(state["sel"]))
+            tv.yview_moveto(y[0])
+            show_detail()
+            w.after(2000, refresh)
+
+        refresh()
 
     def _open_items(self, view="items"):
         """The same page as on the phone, opened on this PC at the collected-items (or keep) list."""
