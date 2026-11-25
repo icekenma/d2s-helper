@@ -173,6 +173,8 @@ summary::-webkit-details-marker{display:none}
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 .ki .nm{font-weight:700;font-size:15px}
 .ki .nm.t-u{color:#c9a86c}.ki .nm.t-s{color:#5fd05f}.ki .nm.t-r{color:var(--gold2)}
+.ki .stars{margin-left:8px;font-size:12px;letter-spacing:1px;color:var(--dim);font-weight:400;vertical-align:1px;white-space:nowrap}
+.ki .stars i{font-style:normal;color:var(--gold2)}
 .ki .sb{grid-column:1;font-size:12.5px;color:var(--ash)}
 .ki .how{grid-row:1/span 2;grid-column:2;font-size:11.5px;color:var(--ash);display:flex;align-items:center;gap:5px;white-space:nowrap}
 .ki .how::before{content:"";width:7px;height:7px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--dim)}
@@ -445,16 +447,18 @@ function drawKeep(){
  var pics={};(keep.pics||[]).forEach(function(n){pics[n]=1});
  var all={};Object.keys(keep.classes).forEach(function(c){keep.classes[c].forEach(function(x){all[x.n]=1})});
  var npic=Object.keys(all).filter(function(n){return pics[n]}).length,ntot=Object.keys(all).length;
- $("kpNote").innerHTML="<b>주우면 보관함으로 가는 아이템</b>여기 있는 아이템은 팔지도, 수집품에 등록하지도 않고 대장장이에서 보관함에 넣습니다. 모든 직업의 목록이 함께 적용됩니다."+
+ $("kpNote").innerHTML="<b>주우면 보관함으로 가는 아이템</b>여기 있는 아이템은 팔지도, 수집품에 등록하지도 않고 대장장이에서 보관함에 넣습니다. 모든 직업의 목록이 함께 적용됩니다. 별은 중요도(★5가 최상)입니다."+
   '<div class="ocr'+(keep.ocr?"":" off")+'"><i></i><span>'+(keep.ocr?"글자 인식이 켜져 있어 목록의 "+ntot+"개를 모두 이름으로 알아봅니다.":
   "글자 인식(Tesseract)이 꺼져 있어 <b style=\"display:inline;color:var(--gold2)\">금색 점</b>이 있는 "+npic+"개만 그림으로 알아봅니다. 나머지 "+(ntot-npic)+"개는 Tesseract를 설치하면 알아봅니다.")+"</span></div>";
  $("kChips").innerHTML=(keep.order||[]).map(function(c){return '<button type="button" data-c="'+esc(c)+'" aria-pressed="'+(c===kcls)+'">'+esc(c)+"<b>"+(keep.classes[c]||[]).length+"</b></button>"}).join("");
  Array.prototype.forEach.call($("kChips").children,function(b){b.onclick=function(){kcls=b.dataset.c;drawKeep()}});
  var list=keep.classes[kcls]||[],html="";
  ["룬워드","유니크","세트"].forEach(function(t){
-  var g=list.filter(function(x){return x.t===t});if(!g.length)return;
+  var g=list.filter(function(x){return x.t===t}).sort(function(a,b){return (b.star||0)-(a.star||0)});if(!g.length)return;
   html+='<div class="kg"><b>'+t+"</b><span>"+g.length+"개</span></div>"+g.map(function(x){
-   return '<div class="ki"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'</span><span class="sb">'+esc(x.b+" · "+x.why)+
+   var st=x.star||0;
+   return '<div class="ki"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
+    '<i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span></span>"+'<span class="sb">'+esc(x.b+" · "+x.why)+
     '</span><span class="how'+(pics[x.n]?" pic":"")+'">'+(pics[x.n]?"그림":"글자")+"</span></div>"}).join("");
  });
  $("kList").innerHTML=html;
