@@ -249,8 +249,24 @@ def find_item_labels(frame, s, kinds=None):
             d = float(m[y:y + bh, x:x + bw].mean())
             if not (0.08 <= d <= 0.6):
                 continue
-            out.append((k, x + bw / 2.0, y + bh / 2.0, float(bw)))
+            cx, cy = x + bw / 2.0, y + bh / 2.0
+            if k == "magic" and sale_notice(v, cx, cy, s):
+                continue                               # the game's own auto-sale notice, not an item
+            out.append((k, cx, cy, float(bw)))
     return out
+
+
+def sale_notice(v, cx, cy, s):
+    """A blue name with a bright white 'N 골드' line right under it: the notice the game shows above the
+    character when its item filter sells a magic item by itself ('… 112 골드'). Not something to pick up."""
+    h, w = v.shape[:2]
+    y0, y1 = int(cy + 9 * s), int(min(h, cy + 30 * s))
+    x0, x1 = int(max(0, cx - 60 * s)), int(min(w, cx + 60 * s))
+    if y1 <= y0 or x1 <= x0:
+        return False
+    roi = v[y0:y1, x0:x1]
+    white = (roi.min(axis=2) >= 200) & ((roi.max(axis=2) - roi.min(axis=2)) <= 30)
+    return int(white.sum()) >= int(25 * s)
 
 
 LOOT_WORDS = ["정수", "열쇠", "부적"]
