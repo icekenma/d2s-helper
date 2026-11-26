@@ -2119,26 +2119,29 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
         if use_keys:
             # one line at a time, looking after every key: Enter only once the pentagrams stand beside
             # '저장 후 나가기' (an Enter on another line opens 설정 / 아이템 필터 instead)
+            # straight to the last line, '저장 후 나가기': read which line is lit and jump there in one go
+            # (Up from the top line wraps round; else Down as many lines as are left), then check once.
+            # Before, it went one line at a time and the pentagram check at fixed spots often missed the
+            # lit last line, so the cursor went round the whole menu once more before the Enter.
             on_exit = False
-            steps = 0
-            for _ in range(8):
-                f_, n_ = norm_now()
+            f_, n_ = norm_now()
+            for _ in range(3):
                 if n_ is None:
                     break
                 if submenu_open(n_) >= SUBMENU_NEED:
                     open_menu()                   # a page under the menu: back to the menu
                     time.sleep(0.6)
+                    f_, n_ = norm_now()
                     continue
-                if exit_menu_shown(n_):
+                row = lit_row(n_)
+                if row == len(MENU_ROWS) - 1 or exit_menu_shown(n_):
                     on_exit = True
                     break
                 if not menu_open(n_):
                     break
-                # the menu opens on its top line: one Up wraps round to '저장 후 나가기' (the last line).
-                # If that did not land there, one line down at a time from wherever the cursor is.
-                press(["up"] if steps == 0 and lit_row(n_) in (0, None) else ["down"])
-                steps += 1
+                press(["up"] if row in (0, None) else ["down"] * (len(MENU_ROWS) - 1 - row))
                 time.sleep(0.15)
+                f_, n_ = norm_now()
             if on_exit:
                 press(["enter"])
                 how = "키보드"
