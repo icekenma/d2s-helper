@@ -1308,6 +1308,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "keep"                       # on the keep list (보관 목록): always to the stash, no matter what
         if ev.get("forged"):
             return "leave"                      # reinforced by the player (강화): never touched
+        if ev.get("kind") == "작은 부적":
+            return "essence"                    # small charms (magic or rare): always to the stash
         if ev["color"] == "green" and PLAY.get("sell_sets", True):
             return "sell"                       # set items: always sold (the user's rule; 사냥 설정 '세트 판매')
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
