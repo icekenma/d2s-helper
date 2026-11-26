@@ -932,9 +932,14 @@ def run(io, opts, base_dir, log, stop):
     return "정리 끝: 보관 %d개, 판매 %d개, 정보창 저장 %d장" % (kept, sold, saved)
 
 
+PARK_WAIT = 0.1        # s for an info box to go once the cursor is parked (the game draws ~25 frames a second)
+HOVER_WAIT = 0.13      # s for the info box of the item under the cursor to come up
+SELL_WAIT = 0.12       # s after a Shift / Ctrl+click before looking whether the item went
+
+
 def _park(io, geo):
     io.move(*geo.raw(*PARK))
-    time.sleep(0.2)
+    time.sleep(PARK_WAIT)
 
 
 def _cells(io, geo):
@@ -1561,7 +1566,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         p_ = park_patch()
         return p_ is not None and float(np.abs(p_ - park_ref[0]).mean()) > 14.0
 
-    def tap(pt, mod=None, wait=0.4):
+    def tap(pt, mod=None, wait=0.25):
         io.click(*geo.raw(*pt), mod=mod)
         time.sleep(wait)
         base_img[0] = None
@@ -1612,9 +1617,13 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             tip_of[cell] = tip_by_fp.get(fp)
         else:
             io.move(*geo.raw(*cell_center(*cell)))
-            time.sleep(0.18)
+            time.sleep(HOVER_WAIT)
             hov = io.grab()
             tip = None if hov is None else tooltip_crop(base, hov, geo)
+            if tip is None:
+                time.sleep(0.1)                   # slow frame: one more look
+                hov = io.grab()
+                tip = None if hov is None else tooltip_crop(base, hov, geo)
             ev = None
             if tip is not None:
                 for t, e in tips:
@@ -1873,10 +1882,23 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
             log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
             return
-        tap(cell_center(*cell), mod="shift")
+        tap(cell_center(*cell), mod="shift", wait=SELL_WAIT)     # (tap's holding() check parks the cursor)
         acted(cell)
-        _park(io, geo)
-        if not filled(cell):
+        gone = not filled(cell)
+        for _ in range(3):
+            if gone or stop.is_set():
+                break
+            time.sleep(0.1)                     # the game may take a frame or two
+            gone = not filled(cell)
+        if gone and not stop.is_set() and holding():
+            # (checked again: the quick look above may have come before an item picked up by a plain click
+            # showed on the cursor) put it back where it was and stop, as tap() does
+            io.click(*geo.raw(*cell_center(*cell)))
+            time.sleep(0.4)
+            log("Shift 클릭이 안 먹어서 아이템이 마우스에 들림 → 제자리에 되돌리고 정리를 멈춤")
+            stop.set()
+            return
+        if gone:
             count["sell"] += 1
             log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
             record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True, got=is_new(cell))
@@ -2344,12 +2366,12 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
                     st_, gone = "game", 0
             if time.time() >= t_end:
                 return st_
-            time.sleep(0.4)
+            time.sleep(0.2)
 
     def press(seq):
         for k in seq:
             io.key(keys[k])
-            time.sleep(0.2)
+            time.sleep(0.1)
 
     def close_all():
         """Leave nothing open: Esc while a box, a page under the menu (아이템 필터) or the menu is showing."""
@@ -2365,12 +2387,16 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
 
     def esc_and_look():
         open_menu()
-        time.sleep(0.9)
-        f_, n_ = norm_now()
-        if n_ is not None and not menu_up(n_):
-            time.sleep(0.8)                       # (it may open a little late)
+        t_end = time.time() + 1.7                 # (it may open a little late)
+        time.sleep(0.15)
+        while True:
             f_, n_ = norm_now()
-        return f_, n_
+            if n_ is not None and menu_up(n_):
+                time.sleep(0.1)                   # (the menu's fade-in: the lit line is read next)
+                return norm_now()
+            if time.time() >= t_end:
+                return f_, n_
+            time.sleep(0.1)
 
     def blind_try(f_, round_):
         """The menu may be up without being recognised: click where its "저장 후 나가기" is anyway
@@ -2481,9 +2507,9 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
                 how = "키보드로 줄을 못 찾아 클릭"
         else:
             io.move(x, y)
-            time.sleep(0.35)
+            time.sleep(0.15)
             io.click(x, y)
-            time.sleep(0.3)
+            time.sleep(0.15)
             io.click(x, y)                        # a first click may only move the highlight
             how = "클릭"
         r = wait_left(3.5)
@@ -2502,7 +2528,7 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
     for how, seq in tries:
         if how == "click":
             io.move(cx, cy)
-            time.sleep(0.3)
+            time.sleep(0.15)
             io.click(cx, cy)
         else:
             press(seq)

@@ -1487,7 +1487,7 @@ class Picker:
             if self.g_gone is None:
                 self.g_gone = now
             if not over_time and (now - self.g_gone < GATHER_GONE or (self.count == 0 and self.g_chests == 0
-                                                                       and waited < GATHER_WAIT[1] + 2)):
+                                                                       and waited < GATHER_WAIT[1])):
                 return True                            # look again: labels shift after a pick-up, and late
                                                        # drops (from a chest, slow to come round) still land
             self.g_done = True
@@ -1530,8 +1530,8 @@ class Picker:
             self.io.key("c")
             opened = True
         ok = False
-        for _ in range(8):
-            time.sleep(0.15)
+        for _ in range(16):
+            time.sleep(0.08)
             f = self.io.grab()
             if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
                 ok = True
@@ -1545,7 +1545,7 @@ class Picker:
             self.log("[%s] 인벤토리를 열지 못함" % what)
         if opened or ok:
             self.io.key("c")
-            time.sleep(0.3)
+            time.sleep(0.15)
             f = self.io.grab()
             if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
                 self.io.key(Key.esc)
@@ -1563,8 +1563,8 @@ class Picker:
             self.io.key("c")
             opened = True
         ok = False
-        for _ in range(8):
-            time.sleep(0.15)
+        for _ in range(16):
+            time.sleep(0.08)
             f = self.io.grab()
             if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
                 ok = True
@@ -1580,7 +1580,7 @@ class Picker:
             self.log("[인벤토리 보기] 인벤토리를 열지 못함")
         if opened or ok:
             self.io.key("c")
-            time.sleep(0.3)
+            time.sleep(0.15)
             f = self.io.grab()
             if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
                 self.io.key(Key.esc)
@@ -1599,8 +1599,8 @@ class Picker:
             self.io.key("c")
             opened = True
         ok = False
-        for _ in range(8):
-            time.sleep(0.15)
+        for _ in range(16):
+            time.sleep(0.08)
             f = self.io.grab()
             if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
                 ok = True
@@ -1616,7 +1616,7 @@ class Picker:
                 res = ("인벤토리 정리 오류", True, {"npc": True, "what": {"오류": 1}})
         if opened or ok:
             self.io.key("c")
-            time.sleep(0.3)
+            time.sleep(0.15)
             f = self.io.grab()
             if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
                 self.io.key(Key.esc)
@@ -1797,8 +1797,8 @@ class Picker:
             self.io.key("c")
             opened = True
         norm = None
-        for _ in range(8):
-            time.sleep(0.15)
+        for _ in range(16):
+            time.sleep(0.08)
             f = self.io.grab()
             if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
                 norm = geo.normalize(f)
