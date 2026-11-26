@@ -424,7 +424,8 @@ class Remote:
                     body = json.dumps({"order": scorer.KEEP_LIST.get("order", []),
                                        "classes": scorer.KEEP_LIST.get("classes", {}),
                                        "pics": sorted(scorer.keep_pictures()), "ocr": ok, "ocr_text": how,
-                                       "min_star": scorer.KEEP_MIN_STAR[0], "picked": sorted(scorer.KEEP_PICK)},
+                                       "min_star": scorer.KEEP_MIN_STAR[0], "picked": sorted(scorer.KEEP_PICK | scorer.ALWAYS_KEEP),
+                                       "always": sorted(scorer.ALWAYS_KEEP)},
                                       ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/keeppick" and method == "POST":

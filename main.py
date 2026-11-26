@@ -1015,6 +1015,10 @@ class App(tk.Tk):
             self.watch.check(self.engine is not None)
         except Exception:
             pass
+        try:
+            self.watch.items()
+        except Exception:
+            pass
         if self.engine is not None and self.engine.state.pop("halt_now", False):
             self.halt()
         try:

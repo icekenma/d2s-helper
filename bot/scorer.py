@@ -280,10 +280,13 @@ def _set_keep(out, nm):
     user picked it on the keep-list page; otherwise just noted (its stars show on the phone)."""
     st = STAR.get(nm, 5)
     out["star"], out["seen_name"] = st, nm
-    if nm in KEEP_PICK:
+    if nm in KEEP_PICK or nm in ALWAYS_KEEP:
         out["keep_name"], out["kind"] = nm, nm
 
 
+# gear the character is working toward (and what it wears now): always to the stash, picked or not.
+# A second copy of one shows '이미 하나를 보관했습니다' and would otherwise be sold as a spare unique.
+ALWAYS_KEEP = {"신념", "무한", "인내", "꿈", "수수께끼", "바람살", "명예의 굴레", "타른헬름"}
 KEEP_PICK = set()                            # names the user picked: always to the stash
 PICK_FILE = "keep_pick.json"
 

@@ -68,6 +68,9 @@ class Watch:
         self.checked_at = 0.0
         self.last = {"gain": None, "runs": None, "at": None}
         self.err = ""
+        self.item_pos = None         # read position in collected/actions.jsonl (start at its end: no old news)
+        self.item_at = 0.0
+        self.item_sent = {}          # name -> when it was last announced
 
     @property
     def conf(self):
@@ -93,6 +96,56 @@ class Watch:
         self.log("휴대폰 시험 알림: %d초 뒤에 보냄 (그 사이 ntfy 앱을 닫거나 화면을 끄세요)" % delay)
         threading.Timer(delay, lambda: self._post("D2S 도우미 시험 알림",
                                                   "이 알림이 배너로 보이면 경고 알림이 잘 옵니다.", "high", "bell")).start()
+
+    def items(self, now=None):
+        """A keep-list item the helper kept (the gear being worked toward: 신념, 무한, 인내, 꿈 ... or one the
+        user picked) -> a push right away, so it can be put on. Reads the new lines of the items log."""
+        now = now or time.time()
+        if now - self.item_at < 5:
+            return
+        self.item_at = now
+        import os
+        from . import paths, scorer
+        p = os.path.join(paths.p("collected"), "actions.jsonl")
+        try:
+            size = os.path.getsize(p)
+        except OSError:
+            return
+        if self.item_pos is None or size < self.item_pos:
+            self.item_pos = size
+            return
+        if size == self.item_pos:
+            return
+        try:
+            with open(p, "rb") as f:
+                f.seek(self.item_pos)
+                data = f.read(size - self.item_pos)
+        except OSError:
+            return
+        end = data.rfind(b"\n")
+        if end < 0:
+            return
+        self.item_pos += end + 1
+        want = scorer.ALWAYS_KEEP | scorer.KEEP_PICK
+        for raw in data[:end].split(b"\n"):
+            try:
+                x = json.loads(raw.decode("utf-8"))
+            except ValueError:
+                continue
+            nm = x.get("kind") or ""
+            if nm not in want or x.get("action") == "판매":
+                continue
+            if now - self.item_sent.get(nm, 0) < 600:
+                continue                              # 인벤토리 보관 then 보관 in town: one push per item
+            self.item_sent[nm] = now
+            goal = nm in scorer.ALWAYS_KEEP
+            self.log("보관 목록 아이템 획득: %s (%s)" % (nm, x.get("action", "")))
+            if self.conf.get("on"):
+                self._post("D2S: %s 획득!" % nm,
+                           "%s을(를) 주워 %s했습니다. 팔지 않습니다.%s" % (
+                               nm, "보관함에 보관" if x.get("action") == "보관" else "인벤토리에 보관",
+                               " 착용해서 지금 장비와 비교해 보세요." if goal else ""),
+                           "high", "tada")
 
     def check(self, running, now=None):
         now = now or time.time()

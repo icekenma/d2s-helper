@@ -315,6 +315,22 @@ summary::-webkit-details-marker{display:none}
 .ins small{display:block;font-size:11.5px;color:var(--ash);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ins .good b{color:var(--life)}.ins .bad b{color:var(--blood2)}.ins .gold b{color:var(--gold2)}
 .luck{height:6px;border-radius:3px;background:var(--abyss);margin-top:7px;overflow:hidden}
+/* terror stage efficiency: which stage gives the most essences per hour */
+.seff{padding:12px 14px;border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.seff .sh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.seff .sh b{font-size:14px;color:var(--bone)}.seff .sh span{font-size:11.5px;color:var(--ash)}
+.seff .tip{margin-top:9px;padding:10px 11px;border-radius:12px;font-size:13px;line-height:1.5;color:var(--bone);
+ background:rgba(240,201,111,.08);box-shadow:inset 0 0 0 1px rgba(240,201,111,.3)}
+.seff .tip.bad{background:rgba(196,66,58,.1);box-shadow:inset 0 0 0 1px rgba(196,66,58,.45)}
+.seff .tip.ok{background:rgba(127,191,90,.08);box-shadow:inset 0 0 0 1px rgba(127,191,90,.4)}
+.seff .tip b{color:var(--gold2)}.seff .tip.bad b{color:var(--blood2)}.seff .tip.ok b{color:var(--life)}
+.seff table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.seff th{font-weight:600;color:var(--ash);font-size:11px;text-align:right;padding:0 4px 5px}
+.seff th:first-child,.seff td:first-child{text-align:left}
+.seff td{padding:7px 4px;text-align:right;border-top:1px solid var(--edge);color:var(--bone)}
+.seff tr.best td{color:var(--gold2);font-weight:700}
+.seff td .w{color:var(--blood2)}
+.seff .rule{margin-top:9px;font-size:11.5px;color:var(--ash);line-height:1.5}
 .luck i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--ember2))}
 
 /* one card per run */
@@ -567,6 +583,7 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
    <span><i style="background:var(--gold)"></i>1개</span>   <span><i style="border-top:1px dashed var(--blood2);height:0;border-radius:0"></i>판 시간 제한</span></div>
  </div>
  <div class="ins" id="rIns"></div>
+ <div class="seff" id="rEff" hidden></div>
  <div class="alrt" id="aBox">
   <div class="ahd"><div><b>정수 경고 알림</b><span id="aSub">도우미가 도는 동안 정수가 안 늘면 휴대폰으로 알림</span></div>
    <button type="button" class="asw" id="aOn" role="switch" aria-checked="false" aria-label="정수 경고 알림"><i></i></button></div>
@@ -1041,6 +1058,7 @@ function drawKeep(){
  var all={};Object.keys(keep.classes).forEach(function(c){keep.classes[c].forEach(function(x){all[x.n]=1})});
  var npic=Object.keys(all).filter(function(n){return pics[n]}).length,ntot=Object.keys(all).length;
  var picked={};(keep.picked||[]).forEach(function(n){picked[n]=1});var npick=Object.keys(picked).length;
+ var always={};(keep.always||[]).forEach(function(n){always[n]=1});
  $("kpNote").innerHTML="<b>무조건 보관할 아이템 고르기</b>아이템을 눌러 <b style=\"display:inline;color:var(--gold2)\">무조건 보관</b>으로 고르면, 별·세트·강화 여부와 상관없이 팔지도 등록하지도 않고 언제나 보관함에 넣습니다. 고르지 않은 아이템은 평소 규칙(새 유니크 등록, 세트·여분 판매 등)대로 처리합니다. 지금 <b style=\"display:inline;color:var(--gold2)\">"+npick+"개</b> 골랐습니다."+
   '<div class="ocr'+(keep.ocr?"":" off")+'"><i></i><span>'+(keep.ocr?"글자 인식이 켜져 있어 목록의 "+ntot+"개를 모두 이름으로 알아봅니다.":
   "글자 인식(Tesseract)이 꺼져 있어 <b style=\"display:inline;color:var(--gold2)\">금색 점</b>이 있는 "+npic+"개만 그림으로 알아봅니다. 나머지 "+(ntot-npic)+"개는 Tesseract를 설치하면 알아봅니다.")+"</span></div>";
@@ -1059,13 +1077,14 @@ function drawKeep(){
   var g=list.filter(function(x){return x.t===t}).sort(function(a,b){return (picked[b.n]?1:0)-(picked[a.n]?1:0)||(b.star||0)-(a.star||0)});if(!g.length)return;
   html+='<div class="kg"><b>'+t+"</b><span>"+g.filter(function(x){return picked[x.n]}).length+" / "+g.length+"개 고름</span></div>"+g.map(function(x){
    var st=x.star||0;
-   var on=!!picked[x.n];
-   return '<button type="button" class="ki pk'+(on?" on":"")+'" data-n="'+esc(x.n)+'" aria-pressed="'+on+'"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
+   var on=!!picked[x.n],alw=!!always[x.n];
+   return '<button type="button" class="ki pk'+(on?" on":"")+'" data-n="'+esc(x.n)+'"'+(alw?' data-always="1"':"")+' aria-pressed="'+on+'"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
     '<i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span></span>"+'<span class="sb">'+esc(x.b+" · "+x.why)+(pics[x.n]?" · 그림으로 알아봄":"")+
-    '</span><span class="pick">'+(on?"무조건 보관":"고르기")+"</span></button>"}).join("");
+    '</span><span class="pick">'+(alw?"항상 보관":on?"무조건 보관":"고르기")+"</span></button>"}).join("");
  });
  $("kList").innerHTML=html;
  Array.prototype.forEach.call(document.querySelectorAll("#kList .pk"),function(b){b.onclick=function(){
+  if(b.dataset.always){alert("목표 장비(신념·무한·인내·꿈 등)는 도우미가 언제나 보관합니다.\n같은 아이템을 또 주워도 팔지 않습니다.");return}
   var n=b.dataset.n,on=!keep.picked||keep.picked.indexOf(n)<0;
   keep.picked=(keep.picked||[]).filter(function(x){return x!==n});if(on)keep.picked.push(n);drawKeep();
   post("/api/keeppick",{n:n,on:on}).catch(function(){})}});
@@ -1147,6 +1166,47 @@ function itemList(items,r){
    '<span class="rin"><b class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</b>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+'<small>'+(x.q?esc(x.q+(x.base?" "+x.base:""))+" · ":"")+tclock(x.t)+(sub?" · "+esc(sub):"")+"</small></span>"+
    '<span class="sts">'+(x.got?'<span class="st got">획득</span><i>/</i>':"")+'<span class="st '+a[0]+'">'+esc(a[1])+"</span></span></button>"}).join("")+"</div>";
 }
+/* terror stage efficiency: per stage the essences per hour (town time included: one run start to the next),
+   how often the boss died, and what to do: hold a multiple of 50 (the essences only go up there) or go lower
+   when the time limit keeps cutting runs before the boss */
+function essAt(st){return 1+Math.floor((st||0)/50)}
+function drawEff(lim){
+ var box=$("rEff"),now=Date.now()/1000,since=now-3*86400,g={};
+ for(var i=0;i<runs.length;i++){
+  var r=runs[i];if(r.live||r.skip||r.start<since)continue;
+  if(r.boss_secs==null&&r.secs<20)continue;
+  var nx=i>0?runs[i-1]:null,cyc=nx&&nx.start>r.start?Math.min(nx.start-r.start,r.secs+120):r.secs+30;
+  var k=r.stage||0,o=g[k]||(g[k]={stage:k,n:0,kill:0,secs:0,boss:0,cyc:0,ess:0});
+  o.n++;o.secs+=r.secs;o.cyc+=cyc;
+  if(r.boss_secs!=null){o.kill++;o.boss+=r.boss_secs;var e=gainOf(r);o.ess+=e!=null?e:essAt(r.stage)}
+ }
+ var rows=Object.keys(g).map(function(k){var o=g[k];o.ph=o.cyc>60?o.ess*3600/o.cyc:null;o.kr=o.kill/o.n;return o});
+ if(!rows.length){box.hidden=true;return}
+ box.hidden=false;
+ rows.sort(function(a,b){return (b.stage||1e9)-(a.stage||1e9)});
+ var ok=rows.filter(function(o){return o.n>=3&&o.ph!=null}),best=ok.length?ok.reduce(function(a,o){return o.ph>a.ph?o:a}):null;
+ var cur=stageNow||((runs[0]||{}).stage)||0,co=g[cur],tip="",cls="";
+ if(!cur){tip="단계를 비워 두어 <b>새로 열린 단계를 계속 올라가는 중</b>입니다. 이때는 실제 몇 단계인지 기록되지 않아 단계별로 비교할 수 없습니다. 원하는 단계(50의 배수 권장)를 정하면 단계별 효율이 쌓입니다."}
+ else{
+  var e=essAt(cur),b50=Math.floor(cur/50)*50,nx=b50+50;
+  if(co&&co.n>=3&&co.kr<0.8){cls="bad";
+   tip="공포 "+cur+"단계: "+co.n+"판 중 <b>"+(co.n-co.kill)+"판</b>이 보스를 못 잡고 판 시간 제한("+mss(lim)+")에 걸렸습니다. 그 판은 정수 0개입니다. "+
+    (best&&best.stage!==cur?"<b>공포 "+best.stage+"단계</b>(시간당 "+fmtN(best.ph,1)+"개)로 낮추세요.":b50>=50&&b50<cur?"<b>공포 "+b50+"단계</b>로 낮추면 보스당 정수는 같고("+essAt(b50)+"개) 더 빨리 잡습니다.":"단계를 낮추세요.")}
+  else if(cur%50!==0){cls=cur>50?"":"ok";
+   tip="공포 "+cur+"단계는 보스당 정수가 "+(b50?b50+"단계와 같은 ":"")+"<b>"+e+"개</b>(3·4막 "+(e+1)+"개)입니다. 정수는 50단계마다만 늘어나 다음은 <b>"+nx+"단계("+(e+1)+"개)</b>. "+
+    (b50>=50?"그 전까지는 <b>"+b50+"단계</b>에서 도는 게 같은 정수를 더 빨리 얻습니다.":"")}
+  else if(co&&co.n>=3){cls="ok";
+   var up=co.cyc/co.n*(e+1)/e;
+   tip="공포 "+cur+"단계: 보스 처치 "+Math.round(co.kr*100)+"% · 시간당 <b>"+fmtN(co.ph,1)+"개</b>. <b>"+(cur+50)+"단계</b>에서 판 하나가 "+mss(up)+" 안에 돌면(지금의 "+fmtN((e+1)/e,2)+"배) 올리는 게 이득입니다."}
+  else tip="공포 "+cur+"단계 기록이 "+(co?co.n:0)+"판입니다. 3판 이상 쌓이면 효율과 추천을 보여 줍니다."}
+ box.innerHTML='<div class="sh"><b>공포 단계 효율</b><span>최근 3일 · 마을 시간 포함</span></div>'+
+  '<div class="tip '+cls+'">'+tip+"</div>"+
+  "<table><thead><tr><th>단계</th><th>판</th><th>보스 처치</th><th>판 시간</th><th>보스당</th><th>시간당</th></tr></thead><tbody>"+
+  rows.map(function(o){var nm=o.stage?o.stage+"단계":"새 단계";
+   return '<tr class="'+(best&&o===best?"best":"")+'"><td>'+nm+(best&&o===best?" ★":"")+"</td><td>"+o.n+"</td><td>"+(o.kr<0.8?'<span class="w">':"<span>")+Math.round(o.kr*100)+"%</span></td><td>"+mss(o.secs/o.n)+"</td><td>"+(o.stage?essAt(o.stage)+"개":"–")+"</td><td>"+(o.ph!=null?fmtN(o.ph,1)+"개":"–")+"</td></tr>"}).join("")+
+  "</tbody></table>"+
+  '<div class="rule">보스당 정수: 0~49단계 1개, 50단계 2개, 100단계 3개, 이후 50단계마다 +1 (3·4막 보스는 +1). 51~99처럼 50의 배수가 아닌 단계는 정수는 같고 몬스터만 셉니다.</div>';
+}
 function drawRuns(full){
  freshDraw();number();
  var now=Date.now()/1000,lim=CD.limit||240,cur=runs.length&&runs[0].live?runs[0]:null;
@@ -1212,6 +1272,7 @@ function drawRuns(full){
   '<div class="'+(skAvg==null?"":skAvg<=be?"good":"bad")+'"><span>건너뛰기 한 번</span><b>'+(skAvg!=null?mss(skAvg):"–")+"</b><small>"+
    (skAvg!=null?(skAvg<=be?"이득 · ":"손해 · ")+mss(be)+" 넘으면 손해":"이득 기준 "+mss(be)+" 이하")+"</small></div>"+
   '<div><span>3·4막 비율</span><b>'+(acts.length?Math.round(100*hot/acts.length)+"%":"–")+"</b><div class=\"luck\"><i style=\"width:"+(acts.length?100*hot/acts.length:0)+"%\"></i></div><small>"+(acts.length?"막을 읽은 "+acts.length+"판 중 "+hot+"판":"패스트 모드에서 막을 읽음")+"</small></div>";
+ drawEff(lim);
  /* cards */
  if(!runs.length){$("rRows").innerHTML='<div class="rempty">아직 기록된 판이 없습니다. 사냥터에 들어가면 판마다 카드가 생기고, 진행 중인 판은 시간이 흘러갑니다.</div>';return}
  var html="";
