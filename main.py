@@ -38,6 +38,11 @@ ENGINE_CFG = {"window_title": TITLE, "interval": 0.5, "dry_run": False, "client_
                        "min_score": 60, "keep_min": 0, "keep_words": "정수", "swap_better": False}}
 PICK_OPTS = {"set": True, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
              "town_start": True, "town_stage": 0, "collect_after": True, "mouse_move": True, "over_limit": 100}
+PLAY = [("skip_act", "막 건너뛰기", "패스트 모드에서 정수를 1개 주는 1·2·5막이면 바로 나가 다시 뽑음"),
+        ("open_chests", "상자 열기", "보스 처치 뒤 모인 상자도 열어 나온 아이템까지 주움"),
+        ("town_tidy", "마을 창고 정리", "등록·보관할 아이템으로 인벤토리가 차면 판이 끝난 뒤 마을 보관함에서 정리"),
+        ("rare_bow", "레어 활 보관", "필요 레벨 60 이상 레어 활·석궁은 보관 (끄면 레어는 모두 판매)"),
+        ("sell_sets", "세트 판매", "세트 아이템은 무조건 판매 (끄면 유니크처럼 새 것은 등록, 나머지는 보관)")]
 FAST_EXT = [("count", "정수 세기"), ("jewel", "주얼 줍기"), ("unique", "유니크 줍기")]
 FAST_EXT_NOTE = {"count": "보스 처치 뒤 인벤토리를 잠깐 열어 불타는 정수 수량을 읽음",
                  "jewel": "보스 처치 뒤 미니맵의 주얼 표시만 주움 (증뎀은 모은 아이템에 표시)",
@@ -104,6 +109,7 @@ class App(tk.Tk):
         scorer.set_min_star(self.cfg.get("keep_star", 1))
         sorter.RUN_INFO["stage"] = int(self.cfg.get("stage", 0) or 0)
         self.watch = alert.Watch(self.cfg, save_cfg, lambda m: self.q.put(("log", m)))
+        self._apply_play()
         self._build()
         self._share()
         self._remote()
@@ -192,6 +198,17 @@ class App(tk.Tk):
             self.v_ext[k] = v
             ttk.Checkbutton(xf, text=label, variable=v,
                             command=lambda k=k: self._set_fast_ext({k: self.v_ext[k].get()}, "PC")).pack(side="left", padx=(8, 0))
+
+        pf = tk.Frame(self, bg=BG)
+        pf.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(pf, text="사냥 설정", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
+        play = self._play()
+        self.v_play = {}
+        for k, label, _ in PLAY:
+            v = tk.BooleanVar(value=play[k])
+            self.v_play[k] = v
+            ttk.Checkbutton(pf, text=label, variable=v,
+                            command=lambda k=k: self._set_play({k: self.v_play[k].get()}, "PC")).pack(side="left", padx=(8, 0))
 
         lf = tk.Frame(self, bg=BG)
         lf.pack(fill="x", padx=20, pady=(0, 10))
@@ -432,6 +449,36 @@ class App(tk.Tk):
             pass
         self._say("%s에서 정수 경고 알림 %s" % (who, "켬: %d분 동안 불타는 정수가 안 늘면 휴대폰(ntfy '%s')으로 알림"
                                            % (int(c.get("minutes") or 30), c["topic"]) if c["on"] else "끔"))
+        self._share()
+
+    def _play(self):
+        p = self.cfg.get("play") or {}
+        return {k: bool(p.get(k, True)) for k, _, _ in PLAY}
+
+    def _apply_play(self):
+        p = self._play()
+        from bot import sorter
+        sorter.PLAY.update(rare_bow=p["rare_bow"], sell_sets=p["sell_sets"])
+        pk = getattr(self, "picker", None)
+        if pk is not None and getattr(pk, "p", None) is not None:
+            pk.p.opts.update(p)
+
+    def _set_play(self, changes, who="휴대폰"):
+        """사냥 설정: act skip, chests, town stash tidy, rare bows kept, sets sold."""
+        p = self._play()
+        p.update({k: bool(v) for k, v in changes.items() if k in p})
+        self.cfg["play"] = p
+        save_cfg(self.cfg)
+        for k, v in getattr(self, "v_play", {}).items():
+            try:
+                v.set(p[k])
+            except Exception:
+                pass
+        self._apply_play()
+        info = {k: (n, note) for k, n, note in PLAY}
+        for k, v in changes.items():
+            if k in info:
+                self._say("%s에서 사냥 설정 '%s' %s: %s" % (who, info[k][0], "켬" if v else "끔", info[k][1]))
         self._share()
 
     def _fast_ext(self):
@@ -688,7 +735,7 @@ class App(tk.Tk):
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
                        "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
-                       "limits": self._limits_state()}
+                       "limits": self._limits_state(), "play": self._play()}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -703,6 +750,7 @@ class App(tk.Tk):
             self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
             self.remote.set_fast = lambda on: self.q.put(("fast", on))
             self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
+            self.remote.set_play = lambda d: self.q.put(("play", d))
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
@@ -778,7 +826,8 @@ class App(tk.Tk):
         if self.keys.recording:
             self.rec_toggle()
         popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events), sort=ecfg.get("sort", {}),   # a recording replaces the screen sweep
-                     fast_count=ext["count"], fast_jewel=ext["jewel"], fast_unique=ext["unique"])
+                     fast_count=ext["count"], fast_jewel=ext["jewel"], fast_unique=ext["unique"], **self._play())
+        self._apply_play()
         self._say("공포 영역 %d단계만 반복" % stage if stage else "단계 미지정: 목록 맨 위의 새로 열린 단계로 진행")
         self.engine = Engine(ecfg, BASE, emit, self.io_lock, state)
         self.engine.start()
@@ -829,6 +878,8 @@ class App(tk.Tk):
                     self._set_fast(p)
                 elif kind == "fast_ext":
                     self._set_fast_ext(p)
+                elif kind == "play":
+                    self._set_play(p)
                 elif kind == "alert":
                     self._set_alert(p)
                 elif kind == "limits":

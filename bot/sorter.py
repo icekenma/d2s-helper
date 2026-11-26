@@ -16,6 +16,7 @@ from . import paths
 
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
 ESSENCE_HOLD = 90            # an essence stack stays in the bags until it holds this many (then: stash)
+PLAY = {"rare_bow": True, "sell_sets": True}   # 사냥 설정 from the helper (rare bows kept / sets sold)
 RARE_BOW_LEVEL = 60          # rare bows / crossbows needing this level or more are kept, every other rare is sold
 ESS_NEED = 0.6          # essence picture match
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
@@ -1306,15 +1307,15 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "keep"                       # on the keep list (보관 목록): always to the stash, no matter what
         if ev.get("forged"):
             return "leave"                      # reinforced by the player (강화): never touched
-        if ev["color"] == "green":
-            return "sell"                       # set items: always sold (the user's rule)
+        if ev["color"] == "green" and PLAY.get("sell_sets", True):
+            return "sell"                       # set items: always sold (the user's rule; 사냥 설정 '세트 판매')
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
             cells = footprint.get(cell, []) if cell is not None else []
             wide = len({c for c, r in cells}) == 2 and len({r for c, r in cells}) in (3, 4)
             bowish = ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55 or (wide and (ev.get("bow") or 0) >= 0.35)
             req = ev.get("req")
-            if bowish and (req is None or req >= RARE_BOW_LEVEL):
+            if PLAY.get("rare_bow", True) and bowish and (req is None or req >= RARE_BOW_LEVEL):
                 ev["kind"] = "레어 활 (필요 레벨 %s)" % (req if req is not None else "?")
                 return "keep"
             return "sell"

@@ -209,6 +209,8 @@ def find_labels(frame, s):
 # hides the rest (magic / rare items, items already collected).
 LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0)}
 LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)", "chest": "상자"}
+STASH_FROM_WP = (-848.0, -122.0)   # the stash chest from the waypoint pad (fixed town layout, 800x600 units)
+STASH_FROM_FIRE = (35.0, -171.0)   # ... and from the middle of the big campfire next to it
 STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), from the middle of the screen at arrival
 TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
 RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
@@ -342,6 +344,24 @@ def find_wp_flames(frame, s, top=0):
     return None if best is None else best[1]
 
 
+def find_campfire(frame, s, top=0):
+    """The big campfire of the town (the torches are small flames): its middle, or None."""
+    h, w = frame.shape[:2]
+    v = frame.astype(np.int16)
+    b, g, r = v[:, :, 0], v[:, :, 1], v[:, :, 2]
+    m = ((r >= 200) & (g >= 90) & (b <= 110) & (r - b >= 120)).astype(np.uint8)
+    m[: top + int(30 * s), :] = 0
+    m[int(h - 115 * s):, :] = 0
+    m = cv2.dilate(m, np.ones((7, 7), np.uint8))
+    n, _, st, _ = cv2.connectedComponentsWithStats(m, 8)
+    best = None
+    for i in range(1, n):
+        x, y, bw, bh, area = st[i]
+        if bw >= 35 * s and bh >= 25 * s and area >= 500 * s * s and (best is None or area > best[0]):
+            best = (area, x + bw / 2.0, y + bh / 2.0)
+    return None if best is None else (best[1], best[2])
+
+
 LOOT_SEARCH = ["정수", "열쇠", "부적"]      # floor items without a minimap marker that are always worth taking
 EXPLORE = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (-1, -1), (1, -1)]
 
@@ -444,6 +464,7 @@ class Picker:
         self.g_full_at = 0.0
         self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
+        self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -812,7 +833,7 @@ class Picker:
         booked = self.state["town_tidy"]
         if self.tt_since is None or self.tt_since < booked:
             self.tt_since, self.npc_since, self.npc_seen, self.tt_clicks, self.tt_click_at = now, None, False, 0, 0.0
-            self.tt_scan = None
+            self.tt_scan, self.tt_walks, self.tt_miss, self.tt_wait = None, 0, 0, 5.0
             self.log("[마을] 창고 정리 시작: 보관함(창고)으로 이동 - 등록·보관할 아이템 정리")
         if self.state.get("cleaned", 0) > self.tt_since:
             self.state["town_tidy"] = 0
@@ -828,21 +849,38 @@ class Picker:
             return
         h, w = frame.shape[:2]
         if self.tt_clicks < 3:
-            if now - self.tt_click_at < 5.0:
-                return                                   # walking there; its window opens on arrival
-            # find the chest by its name: the mouse goes over the spots around where it should be, and
-            # where '보관함' shows above the cursor, that spot is clicked (the character walks up and opens it)
+            if now - self.tt_click_at < self.tt_wait:
+                return                                   # walking; the chest's window opens on arrival
+            # where the chest should be: from the campfire or the waypoint when one is on screen (the town
+            # is always laid out the same; the character does not always arrive at the same spot), else
+            # from the middle of the screen. Off screen -> walk that way first. Then the mouse goes over the
+            # spots around it, and where '보관함' shows above the cursor, that spot is clicked.
             cx, cy = w / 2.0, self.top + (h - self.top) / 2.0
             if self.tt_scan is None:
-                first = self.tt_clicks == 0
-                ox, oy = STASH_TOWN if first else (0.0, 0.0)
-                rad = 80 if first else 150
-                pts = [(ox + dx, oy + dy) for dy in range(-rad, rad + 1, 22) for dx in range(-rad, rad + 1, 22)]
-                pts.sort(key=lambda p: (p[0] - ox) ** 2 + (p[1] - oy) ** 2)
-                self.tt_scan = [(cx + px * s, cy + py * s) for px, py in pts
-                                if 0.03 * w < cx + px * s < 0.97 * w and self.top + 45 * s < cy + py * s < h - 120 * s]
-                self.log("[마을] 보관함 찾기: 마우스를 %d곳에 올려 '보관함' 이름 확인 (%s)"
-                         % (len(self.tt_scan), "도착 자리 기준" if first else "캐릭터 주변"))
+                (gx, gy), how = self._stash_guess(frame, s, cx, cy)
+                if not (0.04 * w < gx < 0.96 * w and self.top + 50 * s < gy < h - 125 * s):
+                    if self.tt_walks >= 6:
+                        self.log("[마을] 6번 걸어가도 보관함이 화면에 안 들어옴")
+                        self.tt_clicks = 3
+                        return
+                    dx, dy = gx - cx, gy - cy
+                    k = min(1.0, 0.30 * w / max(1.0, (dx * dx + dy * dy) ** 0.5))
+                    tx = min(max(cx + dx * k, 0.06 * w), 0.94 * w)
+                    ty = min(max(cy + dy * k, self.top + 60 * s), h - 135 * s)
+                    self._world_click(tx, ty, portal_ok=True)
+                    self.tt_walks += 1
+                    self.tt_click_at, self.tt_wait = now, 2.2
+                    self.log("[마을] 보관함이 화면 밖 (%s 기준 %+d, %+d): 그쪽으로 걸어감 (%d번째)"
+                             % (how, (gx - cx) / s, (gy - cy) / s, self.tt_walks))
+                    return
+                rad = (60 if how != "화면 가운데" else 80) + 60 * self.tt_miss
+                step = 22
+                pts = [(dx, dy) for dy in range(-rad, rad + 1, step) for dx in range(-rad, rad + 1, step)]
+                pts.sort(key=lambda p: p[0] ** 2 + p[1] ** 2)
+                self.tt_scan = [(gx + px * s, gy + py * s) for px, py in pts
+                                if 0.03 * w < gx + px * s < 0.97 * w and self.top + 45 * s < gy + py * s < h - 120 * s]
+                self.log("[마을] 보관함 찾기: %s 기준 (%d, %d) 주변 %d곳에 마우스를 올려 '보관함' 이름 확인"
+                         % (how, gx, gy, len(self.tt_scan)))
             hit = None
             for _ in range(6):
                 if not self.tt_scan:
@@ -851,7 +889,7 @@ class Picker:
                 self.io.move(int(x), int(y))
                 time.sleep(0.09)
                 g = self.io.grab()
-                if g is None:
+                if g is None or g.shape[:2] != (h, w):
                     continue
                 x0, x1 = int(max(0, x - 110 * s)), int(min(w, x + 110 * s))
                 y0, y1 = int(max(0, y - 90 * s)), int(min(h, y + 15 * s))
@@ -862,25 +900,25 @@ class Picker:
                 self.tt_scan = None
                 if self._world_click(hit[0], hit[1], portal_ok=True):
                     self.tt_clicks += 1
-                    self.tt_click_at = now
+                    self.tt_click_at, self.tt_wait = now, 5.0
                     self.log("[마을] '보관함' 이름 확인 -> 클릭 (%d번째): 화면 (%d, %d)" % (self.tt_clicks, hit[0], hit[1]))
                 return
             if self.tt_scan:
                 return                                   # more spots next step
             self.tt_scan = None
-            if self.tt_clicks == 0:
-                # not found from here: walk toward where it should be, then look around the character
-                x, y = cx + STASH_TOWN[0] * s, cy + STASH_TOWN[1] * s
-                x = min(max(x, 0.05 * w), 0.95 * w)
-                if self._world_click(x, y, portal_ok=True):
-                    self.log("[마을] 도착 자리 주변에서 '보관함'을 못 찾음: 그쪽으로 걸어간 뒤 다시 찾음")
-                self.tt_clicks, self.tt_click_at = 1, now
+            self.tt_miss += 1
+            if self.tt_miss >= 3:
+                self.log("[마을] 3번 둘러봐도 '보관함' 이름을 못 찾음")
+                self.tt_clicks = 3
                 return
-            self.tt_clicks += 1
-            self.tt_click_at = now - 3.0
-            if self.tt_clicks < 3:
-                return
-            self.log("[마을] 캐릭터 주변에서도 '보관함' 이름을 못 찾음")
+            # not found there: step toward it (closer, the chest is not hidden behind someone) and look wider
+            (gx, gy), how = self._stash_guess(frame, s, cx, cy)
+            gx = min(max(gx, 0.06 * w), 0.94 * w)
+            gy = min(max(gy, self.top + 60 * s), h - 135 * s)
+            self._world_click(cx + (gx - cx) * 0.6, cy + (gy - cy) * 0.6, portal_ok=True)
+            self.tt_click_at, self.tt_wait = now, 2.2
+            self.log("[마을] '보관함' 이름을 못 찾음: %s 기준 자리 쪽으로 다가가서 더 넓게 찾음" % how)
+            return
         if self.tt_clicks == 3:
             self.tt_clicks = 4
             self.log("[마을] 보관함 창이 열리지 않음: 대장장이(창고)를 찾아 정리")
@@ -896,6 +934,22 @@ class Picker:
                 self._walk_to(w / 2.0 + dx * 0.3 * w, h / 2.0 + dy * 0.28 * h, frame, s, now)
             else:
                 self._hold(direction(dx, dy))
+
+    def _stash_guess(self, frame, s, cx, cy):
+        """-> ((x, y) on screen, may be off it; what it was worked out from)."""
+        try:
+            fire = find_campfire(frame, s, self.top)
+        except Exception:
+            fire = None
+        if fire is not None:
+            return (fire[0] + STASH_FROM_FIRE[0] * s, fire[1] + STASH_FROM_FIRE[1] * s), "모닥불"
+        try:
+            wp = find_wp_flames(frame, s, self.top)
+        except Exception:
+            wp = None
+        if wp is not None:
+            return (wp[0] + STASH_FROM_WP[0] * s, wp[1] + STASH_FROM_WP[1] * s), "웨이포인트"
+        return (cx + STASH_TOWN[0] * s, cy + STASH_TOWN[1] * s), "화면 가운데"
 
     def _stash_tidy(self, now):
         """The stash window is open in town: register / stash by the rules (no selling here), close it."""
@@ -1274,12 +1328,19 @@ class Picker:
                     self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
                     self.log("[3단계] 판매로 빈 칸 %d칸: 남은 아이템 이어서 줍기" % free)
                     return
-                self.state["town_tidy"] = time.time()
-                self.log("[3단계] 판매해도 인벤토리에 자리가 없음 (빈 칸 %s): 줍기를 멈추고 마을 창고에서 정리"
-                         % ("?" if free is None else free))
+                if self.opts.get("town_tidy", True):
+                    self.state["town_tidy"] = time.time()
+                    self.log("[3단계] 판매해도 인벤토리에 자리가 없음 (빈 칸 %s): 줍기를 멈추고 마을 창고에서 정리"
+                             % ("?" if free is None else free))
+                else:
+                    self.log("[3단계] 판매해도 인벤토리에 자리가 없음 (빈 칸 %s): 줍기를 멈추고 귀환 (마을 창고 정리 꺼짐)"
+                             % ("?" if free is None else free))
                 self.w_stage = "exit"
                 return
-            if need_npc and (free is None or free < TOWN_TIDY_FREE):
+            if need_npc and (free is None or free < TOWN_TIDY_FREE) and not self.opts.get("town_tidy", True):
+                self.log("[4단계] 등록·보관할 아이템이 있고 빈 칸이 %s칸뿐이지만 마을 창고 정리가 꺼져 있음 (인벤토리 즉시 정리로 직접 정리)"
+                         % ("?" if free is None else free))
+            elif need_npc and (free is None or free < TOWN_TIDY_FREE):
                 self.state["town_tidy"] = time.time()
                 self.log("[4단계] 등록·보관할 아이템이 있고 빈 칸이 %s칸뿐: 마을에서 창고 정리 예약 (%s)"
                          % ("?" if free is None else free, need.get("what")))
@@ -1357,6 +1418,9 @@ class Picker:
             self.act_name = "%d막" % k
             runlog.tag("act", k)
             if not fast:
+                return
+            if not self.opts.get("skip_act", True):
+                self.log("패스트 모드: %s - 막 건너뛰기가 꺼져 있어 이 판 진행" % self.act_name)
                 return
             if self.reroll_n >= 10:
                 self.reroll_n = 0

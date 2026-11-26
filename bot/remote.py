@@ -368,6 +368,17 @@ class Remote:
                     else:
                         runlog.set_inv(v)
                     return self._send(200, json.dumps({"n": v}).encode("utf-8"), "application/json")
+                if u.path == "/api/play" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        d = {str(k): bool(v) for k, v in d.items()}
+                    except Exception:
+                        return self._send(400, b'{"error":"play"}', "application/json")
+                    cb = getattr(remote, "set_play", None)
+                    if cb and d:
+                        cb(d)
+                    return self._send(200, json.dumps(d).encode("utf-8"), "application/json")
                 if u.path == "/api/fastext" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
