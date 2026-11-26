@@ -117,6 +117,26 @@ def read_items(base, limit=2000):
     return out
 
 
+def read_sold(limit=3000):
+    """Every item the helper sold, newest first (collected/actions.jsonl, the lines with action 판매)."""
+    p = paths.p(os.path.join("collected", "actions.jsonl"))
+    out = []
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f:
+            for line in f:
+                if '"판매"' not in line:
+                    continue
+                try:
+                    x = json.loads(line)
+                except ValueError:
+                    continue
+                if x.get("action") == "판매":
+                    out.append(x)
+    out = out[-limit:]
+    out.reverse()
+    return out
+
+
 def clear_items():
     """Empty the collected-items list. Nothing is deleted: the list and its pictures move into
     collected/old_<date_time> (the list on the page starts again from zero). -> how many were moved."""
@@ -481,6 +501,12 @@ class Remote:
                 if u.path == "/api/items" and method == "GET":
                     from . import namer
                     body = json.dumps({"items": namer.fill(read_items(remote.base)), "now": time.time()}, ensure_ascii=False)
+                    return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
+                if u.path == "/api/sold" and method == "GET":
+                    from . import namer
+                    sold = read_sold()
+                    namer.fill(sold[:600])
+                    body = json.dumps({"items": sold, "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/invnow" and method == "GET":
                     try:

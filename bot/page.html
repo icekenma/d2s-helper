@@ -23,9 +23,9 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 
 /* header: view switch */
 .bar{position:sticky;top:0;z-index:5;padding:8px 14px 10px;background:linear-gradient(var(--abyss) 70%,transparent)}
-.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:.8fr 1.15fr 1.05fr 1.05fr;padding:4px;border-radius:999px;
+.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:.75fr 1.15fr 1.05fr 1.05fr 1.05fr;padding:4px;border-radius:999px;
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
-.views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:14.5px;padding:9px 0;border-radius:999px;white-space:nowrap}
+.views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:13.5px;letter-spacing:-.02em;padding:9px 0;border-radius:999px;white-space:nowrap}
 .views button[aria-selected=true]{color:var(--abyss);background:linear-gradient(var(--gold2),var(--gold));
  box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 2px 10px rgba(210,163,74,.25)}
 
@@ -442,6 +442,22 @@ summary::-webkit-details-marker{display:none}
 .it .stars i{font-style:normal;color:var(--gold2)}
 .it .sb{display:block}
 .it.starred{box-shadow:inset 0 0 0 1px rgba(210,163,74,.55),inset 3px 0 0 var(--gold);background:linear-gradient(90deg,rgba(210,163,74,.08),transparent 60%),var(--iron)}
+/* 판매 기록 */
+.shd{padding:14px;border-radius:var(--r);background:linear-gradient(160deg,#2a1714,var(--iron) 60%);box-shadow:inset 0 0 0 1px rgba(196,66,58,.35)}
+.shd .stop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.shd .stop b{display:block;font-size:16px;color:var(--bone)}
+.shd .stop span{display:block;font-size:12.5px;color:var(--ash);margin-top:3px}
+.shd .sn{text-align:right;flex:none}
+.shd .sn b{font-size:30px;font-weight:800;color:#ffb3a6;font-variant-numeric:tabular-nums;line-height:1}
+.shd .sn small{display:block;font-size:11.5px;color:var(--ash);margin-top:2px}
+.sbars{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:12px 0 10px;background:var(--abyss)}
+.sbars i{display:block;height:100%}
+.shd input{width:100%;height:42px;border:0;border-radius:12px;padding:0 12px;font:inherit;font-size:15px;color:var(--bone);
+ background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge2);outline:none}
+.shd input:focus{box-shadow:inset 0 0 0 1px var(--gold)}
+#sList{display:grid;gap:8px}
+.it .why{display:block;font-size:12px;color:#d98b7f;margin-top:1px}
+.it.sold-it time{color:var(--ash)}
 .q-gold{color:#c9a86c}.q-green{color:#5fd05f}.q-yellow{color:#ece070}.q-orange{color:#e9a04a}.q-blue{color:#8aa0f0}
 .clear{justify-self:center;margin-top:8px;border:0;background:none;color:#d98b7f;font-size:14px;font-weight:600;
  padding:10px 18px;border-radius:12px;box-shadow:inset 0 0 0 1px #5a2a24}
@@ -549,6 +565,7 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
  <button type="button" role="tab" id="v-items" aria-selected="false">모은 아이템</button>
  <button type="button" role="tab" id="v-runs" aria-selected="false">진행 상황</button>
  <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
+ <button type="button" role="tab" id="v-sold" aria-selected="false">판매 기록</button>
 </div></div>
 <section class="items rlog" id="runsView" hidden>
  <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
@@ -598,6 +615,16 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
  </div>
  <div id="rRows"></div>
  <button class="clear" type="button" id="clearRuns">진행 기록 비우기</button>
+</section>
+<section class="items sold" id="soldView" hidden>
+ <div class="shd">
+  <div class="stop"><div><b>판매 기록</b><span id="sSub">도우미가 판 아이템을 모두 모아 봅니다</span></div>
+   <div class="sn"><b id="sToday">0</b><small>오늘</small></div></div>
+  <div class="sbars" id="sBars" aria-hidden="true"></div>
+  <input type="search" id="sQ" placeholder="이름으로 찾기 (예: 구울, 목걸이)" autocomplete="off" aria-label="판매한 아이템 이름으로 찾기">
+ </div>
+ <div class="chips" id="sChips"></div>
+ <div id="sList"></div>
 </section>
 <section class="items keep" id="keepView" hidden>
  <div class="kp" id="kpNote"></div>
@@ -1310,16 +1337,54 @@ function drawRuns(full){
  Array.prototype.forEach.call(document.querySelectorAll(".rc"),function(b){b.onclick=function(){var n=+b.dataset.n;openRun=openRun===n?null:n;drawRuns(true)}});
  Array.prototype.forEach.call(document.querySelectorAll(".ri"),function(b){b.onclick=function(){if(b.dataset.img)zoom(b.dataset.img,b.dataset.cap)}});
 }
+/* ---- 판매 기록: every item the helper sold ---- */
+var sold=[],sCat="all",sShown=200;
+var SCATS=[["all","전체"],["gold","유니크"],["green","세트"],["yellow","레어"],["blue","매직"],["jewel","주얼"],["charm","부적"],["etc","기타"]];
+var SCOL={gold:"#c9a86c",green:"#5fd05f",yellow:"#ece070",blue:"#8aa0f0",jewel:"#6fb6d8",charm:"#e9a04a",etc:"#5f564b"};
+function sCatOf(x){var k=(x.kind||"")+" "+(x.q||"")+" "+(x.name||"");
+ if(/주얼/.test(k))return "jewel";if(/부적/.test(k))return "charm";
+ return ({gold:1,green:1,yellow:1,blue:1})[x.color]?x.color:"etc"}
+function loadSold(){fetch("/api/sold?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){sold=d.items||[];drawSold()}).catch(function(){
+ $("sList").innerHTML='<div class="empty">PC와 연결이 끊겨 판매 기록을 불러오지 못했습니다.</div>'})}
+function drawSold(){
+ var q=($("sQ").value||"").replace(/\s/g,""),t0=new Date();t0.setHours(0,0,0,0);t0=t0.getTime()/1000;
+ var cnt={all:0},today=0;SCATS.forEach(function(c){cnt[c[0]]=cnt[c[0]]||0});
+ sold.forEach(function(x){x._c=sCatOf(x);cnt.all++;cnt[x._c]++;if(x.t>=t0)today++});
+ $("sToday").textContent=today;
+ $("sSub").textContent=sold.length?"전체 "+sold.length+"개 · 오래된 것부터 최대 3000개":"아직 판 아이템이 없습니다";
+ $("sBars").innerHTML=sold.length?SCATS.slice(1).filter(function(c){return cnt[c[0]]}).map(function(c){
+  return '<i style="width:'+(100*cnt[c[0]]/sold.length)+'%;background:'+SCOL[c[0]]+'" title="'+c[1]+" "+cnt[c[0]]+'"></i>'}).join(""):"";
+ $("sChips").innerHTML=SCATS.filter(function(c){return c[0]==="all"||cnt[c[0]]}).map(function(c){
+  return '<button type="button" data-c="'+c[0]+'" aria-pressed="'+(sCat===c[0])+'">'+c[1]+"<b>"+cnt[c[0]]+"</b></button>"}).join("");
+ Array.prototype.forEach.call($("sChips").children,function(b){b.onclick=function(){sCat=b.dataset.c;sShown=200;drawSold()}});
+ var list=sold.filter(function(x){return (sCat==="all"||x._c===sCat)&&(!q||((x.name||"")+(x.base||"")+(x.q||"")).replace(/\s/g,"").indexOf(q)>=0)});
+ if(!list.length){$("sList").innerHTML='<div class="empty">'+(sold.length?"조건에 맞는 판매 기록이 없습니다.":"도우미가 아이템을 팔면 여기에 시간순으로 쌓입니다. 아이템을 누르면 정보창을 크게 봅니다.")+"</div>";return}
+ var html="",key="",grp=[];
+ function flush(){if(!grp.length)return;html+='<div class="hour"><b>'+hourTitle(grp[0].t)+"</b><span>"+grp.length+"개</span></div>"+grp.map(sRow).join("");grp=[]}
+ list.slice(0,sShown).forEach(function(x){var k=hourKey(x.t);if(k!==key){flush();key=k}grp.push(x)});flush();
+ if(list.length>sShown)html+='<button class="more" type="button" id="sMore">더 보기 ('+(list.length-sShown)+"개 남음)</button>";
+ $("sList").innerHTML=html;
+ if($("sMore"))$("sMore").onclick=function(){sShown+=200;drawSold()};
+ Array.prototype.forEach.call(document.querySelectorAll("#sList .it"),function(b){b.onclick=function(){zoom(b.dataset.img,b.dataset.cap)}});
+}
+function sRow(x){
+ var th=x.img?' style="background-image:url(/items/'+esc(x.img)+')"':"",nm=x.name||x.kind||x.quality||"아이템";
+ var sb=[x.q?x.q+(x.base?" "+x.base:""):(x.base||x.quality||"")].filter(Boolean).join(" · ");
+ return '<button class="it sold-it" type="button" data-img="'+esc(x.img||"")+'" data-cap="'+esc(nm+" · 판매 · "+hhmm(x.t)+(x.why?" · "+x.why:""))+'"><span class="th"'+th+'></span><span>'+
+  '<span class="nm q-'+esc(x.color||"")+'">'+esc(nm)+(x.ed?'<span class="edb">증뎀 '+x.ed+'%</span>':"")+"</span>"+
+  (sb?'<span class="sb">'+esc(sb)+"</span>":"")+(x.why?'<span class="why">'+esc(x.why)+"</span>":"")+"</span><time>"+hhmm(x.t)+"</time></button>";
+}
+$("sQ").oninput=function(){sShown=200;drawSold()};
 function show(v){
- var it=v==="items",kp=v==="keep",rn=v==="runs",ctl=!it&&!kp&&!rn;
- $("itemsView").hidden=!it;$("keepView").hidden=!kp;$("runsView").hidden=!rn;$("ctlView").hidden=!ctl;
+ var it=v==="items",kp=v==="keep",rn=v==="runs",sd=v==="sold",ctl=!it&&!kp&&!rn&&!sd;
+ $("itemsView").hidden=!it;$("keepView").hidden=!kp;$("runsView").hidden=!rn;$("soldView").hidden=!sd;$("ctlView").hidden=!ctl;
  $("v-items").setAttribute("aria-selected",String(it));$("v-keep").setAttribute("aria-selected",String(kp));
- $("v-runs").setAttribute("aria-selected",String(rn));$("v-ctl").setAttribute("aria-selected",String(ctl));
+ $("v-runs").setAttribute("aria-selected",String(rn));$("v-ctl").setAttribute("aria-selected",String(ctl));$("v-sold").setAttribute("aria-selected",String(sd));
  clearInterval(runsT);runsT=null;
- if(!ctl){stopStream();if(it)loadItems();else if(kp)loadKeep();else{loadRuns();
+ if(!ctl){stopStream();if(it)loadItems();else if(kp)loadKeep();else if(sd)loadSold();else{loadRuns();
   runsTick=0;runsT=setInterval(function(){if(document.hidden)return;runsTick++;if(runsTick%3===0)loadRuns();else drawRuns()},1000)}}
  else if(!stillT){startStream()}
- history.replaceState(null,"",it?"#items":kp?"#keep":rn?"#runs":"#");
+ history.replaceState(null,"",it?"#items":kp?"#keep":rn?"#runs":sd?"#sold":"#");
 }
 $("clearItems").onclick=function(){
  if(!items.length)return;
@@ -1331,9 +1396,10 @@ $("clearRuns").onclick=function(){
  if(!confirm("진행 기록 "+runs.length+"판을 비울까요?\n(지금 진행 중인 판은 남고, 지난 기록은 PC에 runs_old_ 파일로 옮겨 둡니다)"))return;
  fetch("/api/runs/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){openRun=null;loadRuns()}).catch(function(){});
 };
-$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};$("v-runs").onclick=function(){show("runs")};
+$("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};$("v-runs").onclick=function(){show("runs")};$("v-sold").onclick=function(){show("sold")};
 setInterval(function(){if(!$("itemsView").hidden&&!document.hidden)loadItems()},15000);
-if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");else if(location.hash==="#runs")show("runs");
+setInterval(function(){if(!$("soldView").hidden&&!document.hidden)loadSold()},15000);
+if(location.hash==="#items")show("items");else if(location.hash==="#keep")show("keep");else if(location.hash==="#runs")show("runs");else if(location.hash==="#sold")show("sold");
 
 window.addEventListener("pageshow",function(e){if(e.persisted){status();if(!$("runsView").hidden)loadRuns()}});
 document.addEventListener("visibilitychange",function(){if(document.hidden){stopStream()}else{status();if(!$("runsView").hidden)loadRuns();if(!stillT&&!$("ctlView").hidden)startStream()}});

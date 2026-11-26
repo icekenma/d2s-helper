@@ -1017,6 +1017,37 @@ def _held_save(keys):
         pass
 
 
+def sale_why(ev):
+    """Why an item was sold, in a few words (shown on the phone's 판매 기록 page)."""
+    if not ev:
+        return ""
+    c, k = ev.get("color"), ev.get("kind") or ""
+    if c == "green":
+        return "세트 아이템 (항상 판매)"
+    if c == "gold":
+        if ev.get("stored_seen") or ev.get("uncollected") is False:
+            return "이미 수집한 유니크 (여분)"
+        return "유니크 (수집품에 없음 표시가 없음)"
+    if k == "주얼":
+        return "피해 증가가 없는 주얼"
+    if k == "거대 부적":
+        return "기술 옵션이 없는 거대 부적"
+    if c == "yellow":
+        bits = ["레어"]
+        if ev.get("req"):
+            bits.append("필요 레벨 %d" % ev["req"])
+        if ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55:
+            bits.append("활이지만 기준 미달")
+        elif ev.get("rare_skill_other"):
+            bits.append("다른 직업 기술")
+        elif not ev.get("rare_skill"):
+            bits.append("기술 옵션 없음")
+        return ", ".join(bits)
+    if c == "blue":
+        return "매직"
+    return ev.get("quality") or "판매 대상"
+
+
 def record_item(base_dir, action, ev, tip, tab="", only_actions=False, got=False):
     """Keep a line (and the info-box picture) for every item handled: collected/actions.jsonl (all of it,
     sold and waiting ones too: the run detail on the phone) and, for registered / stashed ones,
@@ -1047,6 +1078,10 @@ def record_item(base_dir, action, ev, tip, tab="", only_actions=False, got=False
                 "img": img}
         if ev.get("ed"):
             line["ed"] = ev["ed"]                  # 증뎀 주얼: +N% 피해 증가
+        if action == "판매":
+            w_ = ev.get("why") or sale_why(ev)
+            if w_:
+                line["why"] = w_
         if got:
             line["got"] = True                     # picked up in this run (not in the bags at the last tidy-up)
         if tip is not None and ev.get("kind") == "주얼":
@@ -1122,7 +1157,7 @@ def sell_cells(io, cells, base_dir, log):
             log("판매 예약: %s - Shift+클릭했지만 칸이 비지 않음" % label)
             continue
         sold += 1
-        ev = seen_[1] if seen_ is not None else {"name": name}
+        ev = dict(seen_[1] if seen_ is not None else {"name": name}, why="휴대폰에서 판매 예약")
         record_item(base_dir, "판매", ev, seen_[2] if seen_ is not None else None, only_actions=True)
         _SEEN.pop((c, r), None)
         log("판매 예약: %s 판매함 (인벤토리에서 Shift+클릭)" % label)
