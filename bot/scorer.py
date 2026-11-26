@@ -377,7 +377,9 @@ def evaluate(crop, s, keep_words=None):
     head = [rows(l) for l in lines[:2] if l["color"] == color]        # name line and base line
     if color in ("gold", "green"):
         # '수집품에 없음' in purple right under the name: not in the collection yet -> to be registered
-        out["uncollected"] = any(l["color"] == "purple" for l in lines[1:4])
+        out["uncollected"] = any(l["color"] == "purple" for l in lines[1:5])
+        # '이미 하나를 보관했습니다' (dim grey) right under the name: already in the collection
+        out["stored_seen"] = any(l["color"] == "dim" for l in lines[1:5])
     word = lambda n: any(spot.has(m, n, 0.68) for m in head)
     is_charm = word("부적")
     for nm, need in KEEP_NAMES.items():
@@ -416,8 +418,20 @@ def evaluate(crop, s, keep_words=None):
                         break
         elif is_charm:
             out["kind"] = "큰 부적"
-        elif color == "yellow" and "화살" in spot._words and word("화살"):
-            out["kind"], out["keep"] = "레어 화살", True
+        elif False:
+            pass
+    if color == "yellow":
+        # rare: a bow / crossbow ('보우' on the base line) and its required level (the last requirement
+        # line - one number - before the first magic line)
+        if "보우" in spot._words:
+            out["bow"] = max([spot.score(rows(l), "보우") for l in lines[1:3]] or [0.0])
+        req = None
+        for l in lines[1:]:
+            if l["color"] in ("blue", "purple", "red"):
+                break
+            if l["color"] == "white" and l.get("label") and len(l["numbers"]) == 1 and 1 <= l["numbers"][0] <= 99:
+                req = l["numbers"][0]
+        out["req"] = req
     if len(lines) > 1:                         # '수량: N' right under the name (essences stack in one cell);
         l = lines[1]                           # the line after it is the sale price, never the count
         if l["numbers"] and l["color"] == "white":
@@ -453,10 +467,17 @@ def evaluate(crop, s, keep_words=None):
                 m = re.search(r"(\d+)", text(lines[1]).split(":")[-1].translate(QTY_FIX))
                 if m:
                     out["qty"] = int(m.group(1))
-            if not out["keep"] and color == "yellow" and len(lines) > 1:
-                base = text(lines[1])
-                if "화살" in base or "화살" in name:
-                    out["kind"], out["keep"] = "레어 화살", True
+            if color == "yellow" and len(lines) > 1:
+                base = text(lines[1]).replace(" ", "")
+                if any(w in base for w in ("보우", "크로스", "발리스타", "아발레스트", "추코누")):
+                    out["bow_text"] = True
+                for l in lines[1:]:
+                    t_ = text(l).replace(" ", "")
+                    if "필요레벨" in t_ or "필요레" in t_:
+                        m_ = re.search(r"(\d+)", t_.split(":")[-1].translate(QTY_FIX))
+                        if m_:
+                            out["req"] = int(m_.group(1))
+                        break
             return out
         base = text(lines[1]) if len(lines) > 1 and lines[1]["color"] == color else ""
         for l in lines[1:4]:
