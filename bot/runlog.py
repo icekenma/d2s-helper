@@ -90,7 +90,7 @@ def build(limit=200):
                 runs[-1]["skip"] = v or "?"            # left at once for its act (패스트 모드)
                 if isinstance(v, int) and v:
                     runs[-1]["act"] = v
-            elif k in ("act", "boss"):
+            elif k in ("act", "boss", "picked", "chests"):
                 runs[-1][k] = v
         elif r.get("ev") == "end" and runs and runs[-1]["end"] is None:
             runs[-1]["end"] = r["t"]
@@ -117,7 +117,7 @@ def build(limit=200):
         r["est"] = essence_guess(r.get("act"), r.get("stage")) if r.get("boss") and not r.get("skip") else None
         r["items"] = [{"t": x.get("t"), "action": x.get("action", ""), "tab": x.get("tab", ""),
                        "kind": x.get("kind", ""), "color": x.get("color", ""), "ed": x.get("ed"),
-                       "img": x.get("img", ""), "score": x.get("score"),
+                       "img": x.get("img", ""), "score": x.get("score"), "got": bool(x.get("got")),
                        "name": x.get("name") or x.get("raw") or x.get("kind") or x.get("quality") or "아이템"}
                       for x in items if r["start"] <= float(x.get("t", 0) or 0) < hi]
     for k, r in enumerate(runs):

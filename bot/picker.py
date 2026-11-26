@@ -424,7 +424,7 @@ class Picker:
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
         self.w_resume = False
-        self.g_portal, self.g_n, self.g_chests = False, 0, 0
+        self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.tt_since, self.tt_clicks, self.tt_click_at = None, 0, 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -586,7 +586,7 @@ class Picker:
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last = None, 0.0, 0.0, 0, None
         self.w_resume = False
-        self.g_portal, self.g_n, self.g_chests = False, 0, 0
+        self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -1049,7 +1049,7 @@ class Picker:
         if f is None or f.shape != frame.shape:
             f = frame
         labs = find_item_labels(f, s, kinds)
-        chests = find_chests(f, s) if self.opts.get("open_chests", True) and not self.opts.get("fast_mode") else []
+        chests = find_chests(f, s) if self.opts.get("open_chests", True) else []
         waited = now - self.g_t0
         if not self.g_ready:
             # wait: the portal, and the labels must stop moving (same count three looks running)
@@ -1101,6 +1101,12 @@ class Picker:
         if not todo:
             # items first; then the chests one by one (what comes out of one is picked up before the next)
             todo = [l for l in chests if self.g_tries.get(key(l), 0) < 2]
+            if todo and not self.g_chest_note:
+                self.g_chest_note = True
+                self.log("[3단계] 아이템 이름표 다 처리: 상자 %d개 열기 시작" % len(todo))
+            elif not chests and not self.g_chest_note:
+                self.g_chest_note = True
+                self.log("[3단계] 화면에서 '상자' 이름표를 찾지 못함 (상자가 있었다면 그 화면을 캡처해 주세요)")
         if not todo or waited > GATHER_MAX:
             self.g_empty += 1
             if self.g_empty < 2 and waited <= GATHER_MAX:
@@ -1114,6 +1120,8 @@ class Picker:
                     "%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in left))) if left else ""))
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
             self.route_played = True                   # (no route / run-around after this)
+            runlog.tag("picked", self.count)
+            runlog.tag("chests", self.g_chests)
             self.w_stage, self.w_t0, self.w_rounds, self.w_last = "check", now, 0, None
             self.log("[4단계] 마무리: 인벤토리를 열어 필요 없는 것은 그 자리에서 판매(Shift+클릭), 등록·보관할 것은 인벤토리에 둠")
             return True

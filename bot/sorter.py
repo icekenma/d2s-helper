@@ -947,14 +947,45 @@ def _tip_key(tip):
         return None
 
 
-def record_item(base_dir, action, ev, tip, tab="", only_actions=False):
+HELD = "held_items.json"          # info-box keys of the items left in the bags at the last tidy-up
+
+
+def _key_in(k, keys, tol=45):
+    """The same info box (a near-identical 24x16 picture: a crop may shift by a pixel)."""
+    if k is None:
+        return False
+    a = np.frombuffer(k, dtype=np.uint8)
+    for x in keys:
+        b = np.frombuffer(x, dtype=np.uint8)
+        if a.shape == b.shape and int((a != b).sum()) <= tol:
+            return True
+    return False
+
+
+def _held_load():
+    try:
+        with open(paths.p(HELD), "r", encoding="utf-8") as f:
+            return set(bytes.fromhex(x) for x in json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def _held_save(keys):
+    try:
+        with open(paths.p(HELD), "w", encoding="utf-8") as f:
+            json.dump(sorted(k.hex() for k in keys if k), f)
+    except OSError:
+        pass
+
+
+def record_item(base_dir, action, ev, tip, tab="", only_actions=False, got=False):
     """Keep a line (and the info-box picture) for every item handled: collected/actions.jsonl (all of it,
     sold and waiting ones too: the run detail on the phone) and, for registered / stashed ones,
     collected/index.jsonl (the collected-items list)."""
     if action == "인벤토리 보관":
         k = _tip_key(tip) if tip is not None else None
         if k is not None:
-            if k in _pending:
+            if _key_in(k, _pending):
                 return                          # already noted in an earlier run
             _pending.add(k)
     try:
@@ -977,6 +1008,8 @@ def record_item(base_dir, action, ev, tip, tab="", only_actions=False):
                 "img": img}
         if ev.get("ed"):
             line["ed"] = ev["ed"]                  # 증뎀 주얼: +N% 피해 증가
+        if got:
+            line["got"] = True                     # picked up in this run (not in the bags at the last tidy-up)
         if tip is not None and ev.get("kind") == "주얼":
             # a lossless copy of every jewel's info box: the pictures to teach the helper '피해 증가' from
             try:
@@ -1353,6 +1386,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
     stash_kinds = ("essence", "keep", "leave")
     if inv_only:
+        held_before = _held_load()
+
+        def is_new(cell):
+            k = _tip_key(tip_of.get(cell)) if tip_of.get(cell) is not None else None
+            return k is not None and not _key_in(k, held_before)
         # sell right here (Shift+click in the bags); only registering / the stash need the smith
         log("인벤토리 정리 계획: %s" % (", ".join("%s %d" % ({"sell": "판매", "register": "등록", "swap": "교체",
                                                           "keep": "보관 목록", "essence": "보관함", "hold": "정수 둠",
@@ -1372,22 +1410,27 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                 if not filled(cell):
                     count["sell"] += 1
                     log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
-                    record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True)
+                    record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True, got=is_new(cell))
                 else:
                     log("%s: Shift+클릭했지만 칸이 비지 않음" % title(ev))
 
             walk(sell_here)
         later = {}
+        held_now = set()
 
         def check_left(cell, ev, d):
             later[d] = later.get(d, 0) + 1
+            if cell in footprint and tip_of.get(cell) is not None and not (cell in ess_cells):
+                held_now.add(_tip_key(tip_of.get(cell)))
             if d in ("register", "swap", "keep", "essence", "leave") and cell in footprint:
                 why = {"register": "등록 대기", "swap": "교체 대기", "keep": "보관 대기", "essence": "보관 대기",
                        "leave": "그대로 둠"}[d]
                 if not (d == "essence" and (cell in ess_cells)):     # essence stacks are counted, not listed
-                    record_item(base_dir, "인벤토리 보관", ev, tip_of.get(cell), why, only_actions=True)
+                    record_item(base_dir, "인벤토리 보관", ev, tip_of.get(cell), why, only_actions=True,
+                                got=is_new(cell))
 
         walk(check_left)
+        _held_save(held_now)
         npc = {k: later[k] for k in ("register", "swap", "keep", "essence", "leave") if later.get(k)}
         need["npc"] = bool(npc)
         need["what"] = npc
