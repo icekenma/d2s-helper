@@ -419,7 +419,7 @@ class Picker:
         self.io, self.log = io, log
         self.opts = opts
         self.state = state if state is not None else {}
-        self.kinds = set(k for k in ("set", "unique", "jewel") if opts.get(k, False))   # chests are never opened
+        self.kinds = set(k for k in ("unique", "jewel") if opts.get(k, False))   # no chests, no set items
         self.mouse = bool(opts.get("mouse_move", True))
         self.held = set()
         self.dragging = False
@@ -1192,9 +1192,9 @@ class Picker:
             if o.get("fast_jewel"):
                 k.add("magic")
             if o.get("fast_unique"):
-                k |= {"unique", "set"}
+                k.add("unique")             # (set items are not picked up: always sold anyway)
             return k if self.fast_pick is not None else set()
-        k = {"set", "unique", "magic", "charm"}
+        k = {"unique", "magic", "charm"}       # set items are not picked up (the user's rule)
         if o.get("rare_bow", True):
             k.add("rare")                  # rares: an Amazon bow / crossbow of level 60+ is kept, the rest sold
         return k

@@ -36,13 +36,12 @@ ENGINE_CFG = {"window_title": TITLE, "interval": 0.5, "dry_run": False, "client_
               "stage_end": True, "town_start": True, "drop_after": 0,
               "sort": {"actions": {c: "keep" for c in sorter.COLORS}, "stash_tab": "개인", "save_tips": False,
                        "min_score": 60, "keep_min": 0, "keep_words": "정수", "swap_better": False}}
-PICK_OPTS = {"set": True, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
+PICK_OPTS = {"set": False, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
              "town_start": True, "town_stage": 0, "collect_after": True, "mouse_move": True, "over_limit": 100}
 PLAY = [("skip_act", "막 건너뛰기", "패스트 모드에서 정수를 1개 주는 1·2·5막이면 바로 나가 다시 뽑음"),
         ("open_chests", "상자 열기", "보스 처치 뒤 모인 상자도 열어 나온 아이템까지 주움"),
         ("town_tidy", "마을 창고 정리", "등록·보관할 아이템으로 인벤토리가 차면 판이 끝난 뒤 마을 보관함에서 정리"),
-        ("rare_bow", "레어 활 보관", "필요 레벨 60 이상 레어 활·석궁은 보관 (끄면 레어는 모두 판매)"),
-        ("sell_sets", "세트 판매", "세트 아이템은 무조건 판매 (끄면 유니크처럼 새 것은 등록, 나머지는 보관)")]
+        ("rare_bow", "레어 활 보관", "필요 레벨 60 이상 레어 활·석궁은 보관 (끄면 레어는 모두 판매)")]
 FAST_EXT = [("count", "정수 세기"), ("jewel", "주얼 줍기"), ("unique", "유니크 줍기")]
 FAST_EXT_NOTE = {"count": "보스 처치 뒤 인벤토리를 잠깐 열어 불타는 정수 수량을 읽음",
                  "jewel": "보스 처치 뒤 미니맵의 주얼 표시만 주움 (증뎀은 모은 아이템에 표시)",
@@ -544,7 +543,7 @@ class App(tk.Tk):
     def _apply_play(self):
         p = self._play()
         from bot import sorter
-        sorter.PLAY.update(rare_bow=p["rare_bow"], sell_sets=p["sell_sets"])
+        sorter.PLAY.update(rare_bow=p["rare_bow"])
         pk = getattr(self, "picker", None)
         if pk is not None and getattr(pk, "p", None) is not None:
             pk.p.opts.update(p)

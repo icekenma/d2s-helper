@@ -16,7 +16,7 @@ from . import paths
 
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
 ESSENCE_HOLD = 90            # an essence stack stays in the bags until it holds this many (then: stash)
-PLAY = {"rare_bow": True, "sell_sets": True}   # 사냥 설정 from the helper (rare bows kept / sets sold)
+PLAY = {"rare_bow": True}   # 사냥 설정 from the helper (rare bows kept)
 RARE_BOW_LEVEL = 60          # rare bows / crossbows needing this level or more are kept, every other rare is sold
 ESS_NEED = 0.6          # essence picture match
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
@@ -1403,8 +1403,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "leave"                      # reinforced by the player (강화): never touched
         if ev.get("kind") == "작은 부적":
             return "essence"                    # small charms (magic or rare): always to the stash
-        if ev["color"] == "green" and PLAY.get("sell_sets", True):
-            return "sell"                       # set items: always sold (the user's rule; 사냥 설정 '세트 판매')
+        if ev["color"] == "green":
+            return "sell"                       # set items: never picked up, always sold if one came in
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
             cells = footprint.get(cell, []) if cell is not None else []
