@@ -207,8 +207,10 @@ def find_labels(frame, s):
 # The game's own name-label colours of items worth picking up (exact palette values: labels are not
 # shaded by the scene). Grey labels are chests (never opened) and plain items; the in-game item filter
 # hides the rest (magic / rare items, items already collected).
-LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0)}
-LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)", "chest": "상자"}
+LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0),
+             "rare": (166, 166, 65)}       # (the game's item colours at the label's 65% brightness)
+LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)",
+            "rare": "레어(노란 이름)", "chest": "상자"}
 STASH_FROM_WP = (-848.0, -122.0)   # the stash chest from the waypoint pad (fixed town layout, 800x600 units)
 STASH_FROM_FIRE = (35.0, -171.0)   # ... and from the middle of the big campfire next to it
 STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), from the middle of the screen at arrival
@@ -463,6 +465,7 @@ class Picker:
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
         self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
+        self.g_max = 0                             # most labels + chests seen at once this run
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
@@ -629,6 +632,7 @@ class Picker:
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
         self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
+        self.g_max = 0                             # most labels + chests seen at once this run
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -1142,7 +1146,10 @@ class Picker:
             if o.get("fast_unique"):
                 k |= {"unique", "set"}
             return k if self.fast_pick is not None else set()
-        return {"set", "unique", "magic", "charm"}
+        k = {"set", "unique", "magic", "charm"}
+        if o.get("rare_bow", True):
+            k.add("rare")                  # rares: an Amazon bow / crossbow of level 60+ is kept, the rest sold
+        return k
 
     def _gather(self, frame, now):
         """Steps 1-3 after the boss (the items gather round the character by themselves since the patch):
@@ -1181,9 +1188,11 @@ class Picker:
         waited = now - self.g_t0
         if not self.g_ready:
             # wait: the portal, and the labels must stop moving (same count three looks running)
+            # (nothing on screen yet is not "settled": the items take a few seconds to come round)
             self.g_stable = self.g_stable + 1 if self.g_seen is not None and len(labs) == self.g_seen else 0
             self.g_seen = len(labs)
             if (waited < GATHER_WAIT[0] or (self.g_stable < 2 and waited < GATHER_WAIT[1])
+                    or (not labs and not chests and waited < GATHER_WAIT[1])
                     or (not self.g_portal and waited < GATHER_WAIT[1])):
                 return True
             self.g_ready = True
@@ -1235,15 +1244,19 @@ class Picker:
             elif not chests and not self.g_chest_note:
                 self.g_chest_note = True
                 self.log("[3단계] 화면에서 '상자' 이름표를 찾지 못함 (상자가 있었다면 그 화면을 캡처해 주세요)")
+        self.g_max = max(self.g_max, len(labs) + len(chests))
         if not todo or waited > GATHER_MAX:
             self.g_empty += 1
-            if self.g_empty < 2 and waited <= GATHER_MAX:
-                return True                            # look once more: labels shift after a pick-up
+            if waited <= GATHER_MAX and (self.g_empty < 3 or (self.count == 0 and self.g_chests == 0
+                                                              and waited < GATHER_WAIT[1] + 6)):
+                return True                            # look again: labels shift after a pick-up, and late
+                                                       # drops (from a chest, slow to come round) still land
             self.g_done = True
             self.release()
             left = [l for l in labs if self.g_tries.get(key(l), 0) >= 3] + [l for l in chests if self.g_tries.get(key(l), 0) >= 2]
-            self.log("[3단계] 줍기 끝: %d개 주움, 상자 %d개 엶, %.0f초%s%s" % (
+            self.log("[3단계] 줍기 끝: %d개 주움, 상자 %d개 엶, %.0f초%s%s%s" % (
                 self.count, self.g_chests, waited, " (최대 %d초 다 됨)" % GATHER_MAX if waited > GATHER_MAX else "",
+                "" if self.g_max else " - 화면에서 아이템 이름표·상자를 한 번도 못 봄 (게임 옵션 '아이템 이름 항상 표시'가 켜져 있는지 확인)",
                 (" - 3번 눌러도 안 주워진 이름표 %d개: %s" % (len(left), "; ".join(
                     "%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in left))) if left else ""))
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
