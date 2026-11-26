@@ -1806,7 +1806,13 @@ class Picker:
         self.top = top
         crop = frame[top: top + int(0.13 * (h - top)), int(0.60 * w):]
         mask = spot.area_mask(crop, (h - top) / 600.0)
-        self.run_text = mask.sum() > 2000             # "N막 - ..." and the kill count of a run
+        norm_c = sorter.Geo(frame).normalize(frame)
+        if sorter.seen(norm_c, "inv") >= 0.7 or sorter.stash_open(norm_c) or sorter.seen(norm_c, "panel") >= 0.6:
+            pass       # a window covers that corner (its header and frame look like text): no change
+        elif self.state.get("town_tidy") and not self.run_text and self.tt_since is not None:
+            pass       # tidying up in town (a stash / smith window may be opening): still in town
+        else:
+            self.run_text = mask.sum() > 2000         # "N막 - ..." and the kill count of a run
         if self.run_text:
             self.state["run_text_at"] = now
         if self.run_text and spot.score(mask, "공포영역") >= 0.55:
