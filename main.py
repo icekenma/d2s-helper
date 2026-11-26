@@ -495,7 +495,12 @@ class App(tk.Tk):
 
     def _play(self):
         p = self.cfg.get("play") or {}
-        return {k: bool(p.get(k, True)) for k, _, _ in PLAY}
+        if int(self.cfg.get("play_v", 0) or 0) < 2:
+            # v3.24: chests are no longer opened by default (picking up was taking too long)
+            p = dict(p, open_chests=False)
+            self.cfg["play"], self.cfg["play_v"] = p, 2
+            save_cfg(self.cfg)
+        return {k: bool(p.get(k, k != "open_chests")) for k, _, _ in PLAY}
 
     def _apply_play(self):
         p = self._play()

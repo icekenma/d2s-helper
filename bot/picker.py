@@ -216,8 +216,9 @@ STASH_FROM_FIRE = (35.0, -171.0)   # ... and from the middle of the big campfire
 STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), from the middle of the screen at arrival
 TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
 RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
-GATHER_WAIT = (3.0, 8.0)    # after the boss: at least / at most this long for the items to gather round
-GATHER_MAX = 80.0           # picking up gathered items and opening the chests: at most this long in all
+GATHER_WAIT = (2.0, 6.0)    # after the boss: at least / at most this long for the items to gather round
+GATHER_MAX = 45.0           # picking up the gathered items: at most this long in all (then the next run)
+RARE_BOW_NEED = 0.6         # a rare's ground label must read '보우' this well to be picked up
 
 
 def find_chests(frame, s):
@@ -258,6 +259,18 @@ def find_item_labels(frame, s, kinds=None):
                 continue                               # the game's own auto-sale notice, not an item
             out.append((k, cx, cy, float(bw)))
     return out
+
+
+def rare_bow_label(frame, l, s):
+    """A rare (yellow) name on the ground worth picking up: only bows ('… 보우'), the rest is sold anyway."""
+    _k, cx, cy, bw = l
+    h, w = frame.shape[:2]
+    x0, x1 = int(max(0, cx - bw / 2 - 4 * s)), int(min(w, cx + bw / 2 + 4 * s))
+    y0, y1 = int(max(0, cy - 11 * s)), int(min(h, cy + 11 * s))
+    if x1 - x0 < 10 or y1 - y0 < 6 or "보우" not in spot._words:
+        return False
+    R, G, B = LABEL_PAL["rare"]
+    return spot.score(spot.colour_mask(frame[y0:y1, x0:x1], s, (B, G, R)), "보우") >= RARE_BOW_NEED
 
 
 def sale_notice(v, cx, cy, s):
@@ -467,6 +480,7 @@ class Picker:
         self.g_full_at = 0.0
         self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
         self.g_max = 0                             # most labels + chests seen at once this run
+        self.g_rare_note = False
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tt_direct, self.tt_best = 0, 0.0
@@ -639,6 +653,7 @@ class Picker:
         self.g_full_at = 0.0
         self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
         self.g_max = 0                             # most labels + chests seen at once this run
+        self.g_rare_note = False
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -1200,14 +1215,26 @@ class Picker:
             self.g_portal = True
             self.log("[2단계] 포탈 확인: 화면 (%d, %d), 보스 처치 %.1f초 뒤" % (self.portal[0], self.portal[1],
                                                                    now - self.over_since))
-        if now - self.g_look < 0.45:
+        if now - self.g_look < 0.3:
             return True
         self.g_look = now
         f = self.io.grab()
         if f is None or f.shape != frame.shape:
             f = frame
         labs = find_item_labels(f, s, kinds)
-        chests = find_chests(f, s) if self.opts.get("open_chests", True) else []
+        if any(l[0] == "rare" for l in labs):
+            # rares: only a bow is worth the walk (every other rare is sold): the rest is left lying
+            keep_, skip_ = [], 0
+            for l in labs:
+                if l[0] != "rare" or rare_bow_label(f, l, s):
+                    keep_.append(l)
+                else:
+                    skip_ += 1
+            labs = keep_
+            if skip_ and not self.g_rare_note:
+                self.g_rare_note = True
+                self.log("[3단계] 레어 이름표 %d개는 활('보우')이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
+        chests = find_chests(f, s) if self.opts.get("open_chests", False) else []
         try:
             full = sorter.inventory_full(sorter.Geo(f).normalize(f),
                                          os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
@@ -1237,22 +1264,22 @@ class Picker:
         if g is not None:
             pool = chests if g[0] == "chest" else labs
             near = [l for l in pool if l[0] == g[0] and abs(l[1] - g[1]) < 60 * s and abs(l[2] - g[2]) < 14 * s]
-            if not near and now - g[3] > 0.7 and g[0] == "chest":
+            if not near and now - g[3] > 0.45 and g[0] == "chest":
                 self.g_chests += 1
                 self.log("[3단계] 상자 열림 (%.1f초, 이번 판 %d번째) - 나온 아이템을 찾음 (아이템 이름표 %d개, 남은 상자 %d개)"
                          % (now - g[3], self.g_chests, len(labs), len(chests)))
                 self.g_goal = None
                 self.g_empty = 0
                 self.g_look = now + 1.0                # what comes out of it: give it a moment to land
-            elif not near and now - g[3] > 0.7:
+            elif not near and now - g[3] > 0.45:
                 self.count += 1
                 self.last_gain = now
                 self.inv_check = None
                 self.log("[3단계] %s 주움 (%.1f초, 이번 판 %d개째, 남은 이름표 %d개, 상자 %d개)"
                          % (LABEL_KO[g[0]], now - g[3], self.count, len(labs), len(chests)))
                 self.g_goal = None
-            elif now - g[3] > 3.5:
-                self.log("[3단계] %s (%d,%d) 3.5초 안에 안 주워짐 (이름표 그대로)" % (LABEL_KO[g[0]], g[1], g[2]))
+            elif now - g[3] > 2.5:
+                self.log("[3단계] %s (%d,%d) 2.5초 안에 안 주워짐 (이름표 그대로)" % (LABEL_KO[g[0]], g[1], g[2]))
                 self.g_goal = None
             else:
                 return True
@@ -1267,30 +1294,30 @@ class Picker:
 
         def key(l):
             return (l[0], int(l[1] // (40 * s)), int(l[2] // (12 * s)))
-        todo = [l for l in labs if self.g_tries.get(key(l), 0) < 3]
+        todo = [l for l in labs if self.g_tries.get(key(l), 0) < 2]
         if not todo:
             # items first; then the chests one by one (what comes out of one is picked up before the next)
             todo = [l for l in chests if self.g_tries.get(key(l), 0) < 2]
             if todo and not self.g_chest_note:
                 self.g_chest_note = True
                 self.log("[3단계] 아이템 이름표 다 처리: 상자 %d개 열기 시작" % len(todo))
-            elif not chests and not self.g_chest_note:
+            elif not chests and not self.g_chest_note and self.opts.get("open_chests", False):
                 self.g_chest_note = True
                 self.log("[3단계] 화면에서 '상자' 이름표를 찾지 못함 (상자가 있었다면 그 화면을 캡처해 주세요)")
         self.g_max = max(self.g_max, len(labs) + len(chests))
         if not todo or waited > GATHER_MAX:
             self.g_empty += 1
-            if waited <= GATHER_MAX and (self.g_empty < 3 or (self.count == 0 and self.g_chests == 0
-                                                              and waited < GATHER_WAIT[1] + 6)):
+            if waited <= GATHER_MAX and (self.g_empty < 2 or (self.count == 0 and self.g_chests == 0
+                                                              and waited < GATHER_WAIT[1] + 2)):
                 return True                            # look again: labels shift after a pick-up, and late
                                                        # drops (from a chest, slow to come round) still land
             self.g_done = True
             self.release()
-            left = [l for l in labs if self.g_tries.get(key(l), 0) >= 3] + [l for l in chests if self.g_tries.get(key(l), 0) >= 2]
+            left = [l for l in labs if self.g_tries.get(key(l), 0) >= 2] + [l for l in chests if self.g_tries.get(key(l), 0) >= 2]
             self.log("[3단계] 줍기 끝: %d개 주움, 상자 %d개 엶, %.0f초%s%s%s" % (
                 self.count, self.g_chests, waited, " (최대 %d초 다 됨)" % GATHER_MAX if waited > GATHER_MAX else "",
                 "" if self.g_max else " - 화면에서 아이템 이름표·상자를 한 번도 못 봄 (게임 옵션 '아이템 이름 항상 표시'가 켜져 있는지 확인)",
-                (" - 3번 눌러도 안 주워진 이름표 %d개: %s" % (len(left), "; ".join(
+                (" - 2번 눌러도 안 주워진 이름표 %d개: %s" % (len(left), "; ".join(
                     "%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in left))) if left else ""))
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
             self.route_played = True                   # (no route / run-around after this)

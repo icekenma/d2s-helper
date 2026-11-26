@@ -31,6 +31,16 @@ def label_mask(crop, s):
     return (big > 127).astype(np.float32)
 
 
+def colour_mask(crop, s, bgr, tol=14):
+    """Text mask of a label drawn in one exact colour (item names on the ground), at work scale."""
+    v = crop.astype(np.int32)
+    keep = ((np.abs(v[:, :, 0] - bgr[0]) <= tol) & (np.abs(v[:, :, 1] - bgr[1]) <= tol)
+            & (np.abs(v[:, :, 2] - bgr[2]) <= tol)).astype(np.uint8) * 255
+    f = tipread.SCALE / float(s)
+    big = cv2.resize(keep, None, fx=f, fy=f, interpolation=cv2.INTER_LINEAR)
+    return (big > 127).astype(np.float32)
+
+
 def tip_mask(crop, s):
     """Text mask of an info box (any text colour), at work scale."""
     return tipread.binarize(tipread.to_work(crop, s)).astype(np.float32)
