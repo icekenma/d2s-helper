@@ -945,6 +945,124 @@ def wp_lit_tab(norm):
          for i in range(5)]
     order = sorted(range(5), key=lambda i: -v[i])
     return order[0] if v[order[0]] - v[order[1]] >= 12 else None     # waypoint list: click x, first row centre, row spacing
+WP_PREV, WP_NEXT = (115, 464), (151, 464)            # stage list: '이전 단계' / '다음 단계' arrows (5 tabs a page)
+_wp_digits = {}
+
+
+def _wp_digit_load():
+    if not _wp_digits:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets",
+                                   "wp_digits.json"), "r", encoding="utf-8") as f:
+                for ch, ts in json.load(f).items():
+                    _wp_digits[ch] = [np.array(t, np.float32) for t in ts]
+        except (OSError, ValueError):
+            pass
+    return _wp_digits
+
+
+def _wp_tab_mask(frame, geo, cx, half=28, y0=64, y1=86, k=3):
+    """One tab's label ('61-70') as a 0/1 picture at 3x the game's 800x600 scale (any window size)."""
+    xa, ya = geo.raw(cx - half, y0)
+    xb, yb = geo.raw(cx + half, y1)
+    c = frame[max(0, ya):yb, max(0, xa):xb]
+    if c.size == 0:
+        return None
+    g = cv2.cvtColor(c, cv2.COLOR_BGR2GRAY)
+    g = cv2.resize(g, (2 * half * k, (y1 - y0) * k), interpolation=cv2.INTER_CUBIC)
+    th = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9)))
+    if th.max() < 25:
+        return None
+    _, bw = cv2.threshold(th, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    bw = (bw > 0).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(bw)
+    keep = np.zeros_like(bw)
+    H, W = bw.shape
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        if a < 6 or h > 0.85 * H or (w <= 3 and h > 0.6 * H and (x < 4 or x + w > W - 4)):
+            continue                                  # specks, the tab's frame lines
+        keep[lab == i] = 1
+    return keep
+
+
+def _wp_read_label(bw):
+    """The tab label's characters, left to right: digits, '-' (the font's own glyphs, no OCR)."""
+    T = _wp_digit_load()
+    cols = bw.sum(axis=0) > 0
+    gs, x, W = [], 0, bw.shape[1]
+    while x < W:
+        if not cols[x]:
+            x += 1
+            continue
+        x0 = x
+        while x < W and cols[x]:
+            x += 1
+        g = bw[:, x0:x]
+        ys = np.where(g.sum(axis=1) > 0)[0]
+        if len(ys):
+            gs.append(g[ys[0]:ys[-1] + 1])
+    if not gs:
+        return ""
+    mh = max(g.shape[0] for g in gs)
+    gs = [g for g in gs if g.shape[1] > 2 and g.size >= 20 and (g.shape[0] >= 0.5 * mh or g.shape[1] >= 8)]
+    out = ""
+    for g in gs:
+        h, w = g.shape
+        if h <= 0.4 * mh:
+            out += "-"
+            continue
+        if w <= 0.38 * h:
+            out += "1"
+            continue
+        q = cv2.resize(g.astype(np.float32), (10, 14), interpolation=cv2.INTER_AREA)
+        best, bd = "?", 9.0
+        for ch, ts in T.items():
+            for t in ts:
+                d = float(np.abs(q - t).mean())
+                if d < bd:
+                    best, bd = ch, d
+        out += best
+    return out
+
+
+def _wp_range(text):
+    """'61-70' -> (61, 70); a stray character after the last digit is let go ('61-701'). None if unsure."""
+    import re as _re
+    m = _re.match(r"^(\d+)-(\d+)", text)
+    if not m:
+        return None
+    lo, hi_s = int(m.group(1)), m.group(2)
+    if lo % 10 != 1:
+        return None
+    for k in range(len(hi_s), 0, -1):
+        hi = int(hi_s[:k])
+        if lo <= hi <= lo + 9:
+            return lo, hi
+    return None
+
+
+def wp_tab_ranges(frame):
+    """The stage list's five tab labels -> [(lo, hi) or None] * 5 ('61-70', ..., '101-103'). A label read
+    wrong is put right from its neighbours (each tab is ten stages on from the one before)."""
+    geo = Geo(frame)
+    out = []
+    for i in range(5):
+        bw = _wp_tab_mask(frame, geo, WP_TAB1 + WP_TAB_PITCH * i)
+        out.append(_wp_range(_wp_read_label(bw)) if bw is not None else None)
+    known = [(i, r) for i, r in enumerate(out) if r]
+    if len(known) >= 2:
+        # the labels must agree with each other: a tab's lo is ten more than the one before
+        good = [(i, r) for i, r in known if all(r[0] - r2[0] == 10 * (i - i2) for i2, r2 in known if i2 != i)]
+        if not good:
+            return [None] * 5
+        i0, r0 = good[0]
+        for i in range(5):
+            if out[i] is None or out[i] not in [r for _, r in good]:
+                lo = r0[0] + 10 * (i - i0)
+                out[i] = (lo, lo + 9) if lo > 0 else None
+    return out
+
 BTN_COLLECT = (265, 461)        # "수집": the game's own register-everything-new button
 TAB_UNIQUE = (355, 51)          # the "고유" (collection) sub-tab of the stash
 

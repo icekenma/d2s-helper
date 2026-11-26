@@ -768,6 +768,35 @@ class Picker:
             self.log("웨이포인트: 단계 목록이 열려 있어 닫고 첫 화면에서 다시 고름")
             return True
         tab, row = (stage - 1) // per, (stage - 1) % per
+        # the list shows five tabs a page ('61-70' ... '101-103'), with '이전 단계' / '다음 단계' arrows for
+        # the other pages: read the labels, turn the page until the stage's tab is in view, then click it
+        try:
+            rng = sorter.wp_tab_ranges(frame)
+        except Exception:
+            rng = [None] * 5
+        known = [r for r in rng if r]
+        if known:
+            pos = next((i for i, r in enumerate(rng) if r and r[0] <= stage <= r[1]), None)
+            if pos is None:
+                last = getattr(self, "wp_page_seen", None)
+                self.wp_page_turns = getattr(self, "wp_page_turns", 0) + 1
+                go_prev = stage < known[0][0]
+                if self.wp_page_turns > 8 or (not go_prev and last == tuple(rng)):
+                    # turned to the end and the stage is not there: not cleared (yet / any more)
+                    self.wp_page_turns, self.wp_page_seen = 0, None
+                    self.wp_frontier, self.wp_list_tab = True, None
+                    self.io.key(Key.esc)
+                    self.log("웨이포인트: 공포 영역 %d은 깬 단계 목록에 없음 (마지막 탭 %d~%d) → 목록 맨 위 새 단계로 진행"
+                             % (stage, known[-1][0], known[-1][1]))
+                    return True
+                self.wp_page_seen = tuple(rng)
+                self.wp_list_tab = None
+                self.io.click(*geo.raw(*(sorter.WP_PREV if go_prev else sorter.WP_NEXT)))
+                self.log("웨이포인트: 공포 영역 %d단계가 이 쪽(%d~%d)에 없음 → %s 단계 화살표"
+                         % (stage, known[0][0], known[-1][1], "이전" if go_prev else "다음"))
+                return True
+            self.wp_page_turns, self.wp_page_seen = 0, None
+            tab, row = pos, stage - rng[pos][0]
         lit = sorter.wp_lit_tab(geo.normalize(frame))
         if self.wp_list_tab != tab or lit != tab:
             # click the stage's tab and do not go on until that tab really is the open one
@@ -791,7 +820,10 @@ class Picker:
                          % (tab * per + 1, tab * per + per, "모름" if lit is None else "%d~%d" % (lit * per + 1, lit * per + per)))
                 return True
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * tab, sorter.WP_TAB_Y))
-            self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * per + 1, tab * per + per))
+            if known and rng[tab]:
+                self.log("웨이포인트: %d~%d단계 탭 열기 (%d번째 탭)" % (rng[tab][0], rng[tab][1], tab + 1))
+            else:
+                self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * per + 1, tab * per + per))
             return True
         self.wp_tab_tries = 0
         self.wp_tab_fail = 0
