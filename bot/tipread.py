@@ -99,6 +99,8 @@ def line_color(img, mask, y0, y1):
     mx, mn = max(b, g, r), min(b, g, r)
     if mx - mn < 25:
         return "white"
+    if b > 70 and r > 0.5 * b and r > 1.3 * g and b > 1.3 * g:
+        return "purple"                     # '수집품에 없음': a unique / set not in the collection yet
     if b == mx and b > 1.6 * r:
         return "blue"
     if r == mx and r > 2 * g:

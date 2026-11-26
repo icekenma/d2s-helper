@@ -367,6 +367,9 @@ def evaluate(crop, s, keep_words=None):
         return mask[max(0, l["y0"] - 2):l["y1"] + 2]
 
     head = [rows(l) for l in lines[:2] if l["color"] == color]        # name line and base line
+    if color in ("gold", "green"):
+        # '수집품에 없음' in purple right under the name: not in the collection yet -> to be registered
+        out["uncollected"] = any(l["color"] == "purple" for l in lines[1:4])
     word = lambda n: any(spot.has(m, n, 0.68) for m in head)
     is_charm = word("부적")
     for nm, need in KEEP_NAMES.items():

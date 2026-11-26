@@ -1235,6 +1235,15 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if ev["color"] in ("gold", "green"):
             if ev.get("charm"):
                 return "keep"                   # unique charms are kept even when one is registered
+            if ev.get("uncollected"):
+                # the game itself says '수집품에 없음' (purple): register it (one try per item)
+                return "register" if tries.get(ev["name"] or ("?", cell), 0) < 1 else "keep"
+            if "uncollected" in ev:
+                # no purple line: already in the collection -> a spare (a better roll may still swap in)
+                sc, old = ev["score"], registry.get(ev["name"]) if ev["name"] else None
+                if swap_better and ev["name"] and sc is not None and tries.get(ev["name"], 0) < 3 and (old is None or sc > old):
+                    return "swap"
+                return "sell"
             if not ev["name"]:
                 return "sell"                   # "수집" already registered every new one: this is a spare
             if not ev["stored"] and tries.get(ev["name"], 0) < 1:
@@ -1351,6 +1360,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         need["npc"] = bool(npc)
         need["what"] = npc
         need["sold"] = count["sell"]
+        n9 = norm_now()
+        if n9 is not None:
+            need["free"] = sum(1 for row in read_inventory(n9) for v in row if not v)
         return "인벤토리 정리: 판매 %d%s" % (count["sell"], (" - 대장장이가 필요한 것: " + ", ".join(
             "%s %d" % ({"register": "등록", "swap": "교체", "keep": "보관 목록", "essence": "보관함",
                         "leave": "읽지 못함/강화"}[k], v) for k, v in npc.items())) if npc else " - 대장장이 필요 없음"), True
@@ -1391,7 +1403,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                     if d not in ("register", "swap"):
                         return
                 name, sc = ev["name"], ev["score"]
-                tries[name] = tries.get(name, 0) + 1
+                tries[name or ("?", cell)] = tries.get(name or ("?", cell), 0) + 1
+                name = name or title(ev)
                 tap(cell_center(*cell), mod="ctrl")
                 acted(cell)
                 _park(io, geo)

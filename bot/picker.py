@@ -209,6 +209,8 @@ def find_labels(frame, s):
 # hides the rest (magic / rare items, items already collected).
 LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0)}
 LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)", "chest": "상자"}
+TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
+RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
 GATHER_WAIT = (3.0, 8.0)    # after the boss: at least / at most this long for the items to gather round
 GATHER_MAX = 80.0           # picking up gathered items and opening the chests: at most this long in all
 
@@ -422,6 +424,7 @@ class Picker:
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests = False, 0, 0
+        self.tt_since = None
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -735,6 +738,9 @@ class Picker:
             return
         if self.town_since is None:
             self.town_since = now
+        if self.state.get("town_tidy"):
+            self._town_tidy(frame, s, now)
+            return
         if now - self.town_label >= 0.8:
             self.town_label = now
             if self._wp_label(frame, s, now):
@@ -776,6 +782,39 @@ class Picker:
                 self._hold(direction(dx, dy))
         elif not self.mouse and now - self.explore_at >= 1.0:
             self.release()
+
+    def _town_tidy(self, frame, s, now):
+        """In town, before the waypoint: walk to the smith (his window has the stash and the collection tab);
+        the engine tidies up there. Booked when the bags were getting full of things to register / stash."""
+        booked = self.state["town_tidy"]
+        if self.tt_since is None or self.tt_since < booked:
+            self.tt_since, self.npc_since, self.npc_seen = now, None, False
+            self.log("[마을] 창고 정리: 대장장이(창고)에게 이동 - 등록·보관할 아이템 정리")
+        if self.state.get("cleaned", 0) > self.tt_since:
+            self.state["town_tidy"] = 0
+            self.tt_since = None
+            self.release()
+            self.log("[마을] 창고 정리 끝 (%.0f초): 웨이포인트로" % (now - booked))
+            return
+        if now - self.tt_since > 90:
+            self.state["town_tidy"] = 0
+            self.tt_since = None
+            self.release()
+            self.log("[마을] 90초 동안 대장장이 창을 열지 못함: 이번에는 정리 없이 웨이포인트로 (다음 판 끝에 다시 시도)")
+            return
+        self._go_smith(frame, s, now, None, None, None, "[마을] 창고 정리")
+        if not self.npc_seen and now - self.tt_since > 4 and now - self.explore_at >= 1.6:
+            # no smith name on screen: look around the town (the same walk as for the waypoint)
+            self.explore_at = now
+            dx, dy = EXPLORE[self.explore_i % len(EXPLORE)]
+            self.explore_i += 1
+            if self.explore_i % len(EXPLORE) == 1:
+                self.log("[마을] 대장장이 이름표가 안 보여 주변을 둘러보는 중")
+            h, w = frame.shape[:2]
+            if self.mouse:
+                self._walk_to(w / 2.0 + dx * 0.3 * w, h / 2.0 + dy * 0.28 * h, frame, s, now)
+            else:
+                self._hold(direction(dx, dy))
 
     # ---- smith ------------------------------------------------------------------------------
     def _go_smith(self, frame, s, now, me, portal, mark, why):
@@ -1044,7 +1083,7 @@ class Picker:
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
             self.route_played = True                   # (no route / run-around after this)
             self.w_stage, self.w_t0, self.w_rounds, self.w_last = "check", now, 0, None
-            self.log("[4단계] 마무리: 인벤토리를 열어 필요 없는 것은 그 자리에서 판매(Shift+클릭), 등록·보관할 것만 대장장이로")
+            self.log("[4단계] 마무리: 인벤토리를 열어 필요 없는 것은 그 자리에서 판매(Shift+클릭), 등록·보관할 것은 인벤토리에 둠")
             return True
         self.g_empty = 0
         l = min(todo, key=lambda q: (self.g_tries.get(key(q), 0), (q[1] - w / 2.0) ** 2 + (q[2] - h / 2.0) ** 2))
@@ -1101,34 +1140,39 @@ class Picker:
         s = (h - self.top) / 600.0
         st = self.w_stage
         if st == "check":
+            # sell here (Shift+click in the bags); what must be registered / stashed stays in the bags and is
+            # taken to the stash in town after the run, only once the bags are getting full
             self.release()
             self.frame = None
             res = self._tidy_bags()
             if res is None:
                 self.log("[4단계] 인벤토리를 열지 못함: 정리 없이 귀환")
-                self.w_stage = "exit"
+                self.w_stage, self.w_resume = "exit", False
                 return
             text, need_npc, need = res
-            self.log("[4단계] " + text)
-            what = need.get("what") or {}
-            if self.w_resume and (not need_npc or (self.w_last is not None and what == self.w_last)):
-                self.w_resume, self.w_stage = False, None      # room made in the bags: on picking up
-                self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
-                self.log("[3단계] 인벤토리 정리 끝: 남은 아이템 이어서 줍기")
+            free = need.get("free")
+            self.log("[%s단계] %s (빈 칸 %s)" % ("3" if self.w_resume else "4", text, "?" if free is None else free))
+            if self.w_resume:
+                self.w_resume = False
+                if free is not None and free >= RESUME_FREE:
+                    self.w_stage = None
+                    self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
+                    self.log("[3단계] 판매로 빈 칸 %d칸: 남은 아이템 이어서 줍기" % free)
+                    return
+                self.state["town_tidy"] = time.time()
+                self.log("[3단계] 판매해도 인벤토리에 자리가 없음 (빈 칸 %s): 줍기를 멈추고 마을 창고에서 정리"
+                         % ("?" if free is None else free))
+                self.w_stage = "exit"
                 return
-            if not need_npc:
-                self.log("[4단계] 정수 외에 대장장이가 필요한 아이템 없음: 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
-                self.w_stage = "exit"
-            elif self.w_rounds >= 3 or (self.w_last is not None and what == self.w_last):
-                self.log("[4단계] 대장장이에서 정리한 뒤에도 같은 것이 남음 (%s, 정리 %d번): 정리 규칙상 두는 아이템으로 보고 귀환"
-                         % (what, self.w_rounds))
-                self.w_stage = "exit"
-            else:
-                self.w_rounds += 1
-                self.w_last = dict(what)
-                self.w_stage, self.w_t0, self.w_ref = "smith", now, self.state.get("cleaned", 0)
-                self.npc_since, self.gave_up = None, False
-                self.log("[4단계] 등록·보관할 아이템이 있어 대장장이(창고)에게 감 (%d번째)" % self.w_rounds)
+            if need_npc and (free is None or free < TOWN_TIDY_FREE):
+                self.state["town_tidy"] = time.time()
+                self.log("[4단계] 등록·보관할 아이템이 있고 빈 칸이 %s칸뿐: 마을에서 창고 정리 예약 (%s)"
+                         % ("?" if free is None else free, need.get("what")))
+            elif need_npc:
+                self.log("[4단계] 등록·보관할 아이템은 인벤토리에 둠 (빈 칸 %d칸, %d칸 아래로 줄면 마을 창고에서 정리): %s"
+                         % (free, TOWN_TIDY_FREE, need.get("what")))
+            self.log("[4단계] 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
+            self.w_stage = "exit"
             return
         if st == "smith":
             if self.state.get("cleaned", 0) > self.w_ref:
