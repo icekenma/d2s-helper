@@ -520,6 +520,8 @@ def cell_center(col, row):
 
 def tooltip_crop(base, hover, geo):
     """Largest changed block between two raw frames, or None."""
+    if base is None or hover is None or base.shape != hover.shape:
+        return None                                # the window changed size between the two grabs
     d = cv2.absdiff(cv2.cvtColor(base, cv2.COLOR_BGR2GRAY), cv2.cvtColor(hover, cv2.COLOR_BGR2GRAY))
     mask = (d > 22).astype(np.uint8)
     x_lo, x_hi = max(0, int(geo.x0)), int(geo.x0 + 800 * geo.s)

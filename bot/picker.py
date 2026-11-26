@@ -442,6 +442,7 @@ class Picker:
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
+        self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
         # mouse walking
@@ -606,6 +607,7 @@ class Picker:
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
+        self.g_full_ok = 0.0                       # the bags were tidied after a full notice at this time
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -1158,7 +1160,7 @@ class Picker:
                 self.g_goal = None
             else:
                 return True
-        if self.state.get("inv_full", 0) > max(self.state.get("cleaned", 0), self.g_t0):
+        if self.state.get("inv_full", 0) > max(self.state.get("cleaned", 0), self.g_t0, self.g_full_ok):
             self.g_done = True                         # bags full: the smith, then back to the labels
             self.release()
             self.w_stage, self.w_t0, self.w_ref, self.w_resume = "check", now, self.state.get("cleaned", 0), True
@@ -1266,6 +1268,7 @@ class Picker:
             self.log("[%s단계] %s (빈 칸 %s)" % ("3" if self.w_resume else "4", text, "?" if free is None else free))
             if self.w_resume:
                 self.w_resume = False
+                self.g_full_ok = self.g_full_at = time.time()   # this full notice is dealt with
                 if free is not None and free >= RESUME_FREE:
                     self.w_stage = None
                     self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
@@ -1291,6 +1294,7 @@ class Picker:
                 self.release()
                 if self.w_resume:
                     self.w_resume, self.w_stage = False, None
+                    self.g_full_ok = self.g_full_at = time.time()
                     self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
                     self.log("[3단계] 대장장이 정리 끝 (%.0f초): 남은 아이템 이어서 줍기" % (now - self.w_t0))
                     return
@@ -1871,8 +1875,8 @@ class Picker:
             self._wrapup(frame, now)
             return
         if self.over_since is not None and not self.forced and not self.g_done and self._gather_kinds():
-            if self._gather(frame, now):
-                return
+            if self._gather(frame, now) or self.w_stage:
+                return                            # (bags full: the tidy-up starts on the next step)
         if self.fast_pick is None and self._route(now):
             return
         h, w = frame.shape[:2]
