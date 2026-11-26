@@ -1111,10 +1111,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return "게임 창을 찾지 못함", False
     geo = Geo(frame)
     inv_only = mode == "inv"
+    view_only = mode == "view"                  # read every item for the phone's '지금 인벤토리', touch nothing
     at_stash = mode == "stash"                  # the stash chest in town: its own window, no shop
     if need is None:
         need = {}
-    if inv_only:
+    if inv_only or view_only:
         if seen(geo.normalize(frame), "inv") < 0.7:
             return "인벤토리가 열려 있지 않음", False
     elif at_stash:
@@ -1374,12 +1375,71 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         n = norm_now()
         return n is not None and bool(read_inventory(n)[cell[1]][cell[0]])
 
+    def snap(note):
+        """What the bags hold right now (every item read in this tidy-up that is still there) ->
+        inv_now.json + its info-box pictures + a picture of the bag grid: the phone's '지금 인벤토리'."""
+        try:
+            _park(io, geo)
+            f = io.grab()
+            n_ = None if f is None else geo.normalize(f)
+            inv_ = read_inventory(n_) if n_ is not None else None
+            d = paths.p("inv_now")
+            os.makedirs(d, exist_ok=True)
+            for x in os.listdir(d):
+                if x.endswith(".jpg"):
+                    try:
+                        os.remove(os.path.join(d, x))
+                    except OSError:
+                        pass
+            stamp = time.strftime("%H%M%S")
+            grid = ""
+            if f is not None:
+                x0, y0 = geo.raw(INV_X - 3, INV_Y - 3)
+                x1, y1 = geo.raw(INV_X + CELL * INV_COLS + 3, INV_Y + CELL * INV_ROWS + 3)
+                ok, buf = cv2.imencode(".jpg", f[max(0, y0):y1, max(0, x0):x1], [cv2.IMWRITE_JPEG_QUALITY, 88])
+                if ok:
+                    grid = "grid_%s.jpg" % stamp
+                    buf.tofile(os.path.join(d, grid))
+            items = []
+            for i, (cell, cells) in enumerate(sorted(footprint.items(), key=lambda kv: (kv[0][1], kv[0][0]))):
+                if inv_ is not None and not inv_[cell[1]][cell[0]]:
+                    continue                    # sold / moved away
+                ev = last_ev.get(cell) or {}
+                cs = cells or [cell]
+                img = ""
+                tip = tip_of.get(cell)
+                if tip is not None:
+                    ok, buf = cv2.imencode(".jpg", tip, [cv2.IMWRITE_JPEG_QUALITY, 88])
+                    if ok:
+                        img = "tip_%s_%02d.jpg" % (stamp, i)
+                        buf.tofile(os.path.join(d, img))
+                try:
+                    dec = decide(ev, cell) if ev else "leave"
+                except Exception:
+                    dec = ""
+                items.append({"c": cell[0], "r": cell[1], "w": len({c for c, _ in cs}), "h": len({r for _, r in cs}),
+                              "name": ev.get("name") or ev.get("seen_name") or "", "raw": ev.get("raw") or "",
+                              "kind": ev.get("kind") or "", "quality": ev.get("quality") or "",
+                              "color": ev.get("color") or "", "ed": ev.get("ed"), "req": ev.get("req"),
+                              "qty": ev.get("qty") if ev.get("qty") is not None else ev.get("qty_raw"),
+                              "star": ev.get("star"), "pick": bool(ev.get("keep_name")),
+                              "forged": bool(ev.get("forged")), "uncollected": bool(ev.get("uncollected")),
+                              "stored": bool(ev.get("stored_seen")), "essence": cell in ess_cells,
+                              "burn": cell in burn_cells, "dec": dec, "img": img, "read": bool(ev)})
+            free = sum(1 for row in inv_ for v in row if not v) if inv_ is not None else None
+            with open(paths.p("inv_now.json"), "w", encoding="utf-8") as fh:
+                json.dump({"t": round(time.time(), 1), "note": note, "free": free, "grid": grid,
+                           "cols": INV_COLS, "rows": INV_ROWS, "items": items}, fh, ensure_ascii=False)
+        except Exception as e:
+            log("지금 인벤토리 기록 오류: %s" % e)
+
     park_ref[0] = park_patch()                  # what the parked cursor sees with nothing held
     n0 = norm_now()
     inv0 = read_inventory(n0) if n0 is not None else None
     if inv0 is not None and not any(v for row in inv0 for v in row):
-        if probe:
+        if probe and not view_only:
             record_essences({}, set())            # no 불타는 정수 in the bags this run
+        snap("비어 있음")
         return "자동 정리: 인벤토리가 비어 있어 할 일 없음", True
     # look at every item once first, so that only the steps that are needed get done
     plan = {}
@@ -1408,6 +1468,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return "자동 정리 중단", False
     if probe and plan.get("leave") and not io.front():
         return NEED_FRONT, False                # info boxes missing: the game is behind other windows
+    if view_only:
+        snap("지금 읽음")
+        return "지금 인벤토리 읽음: 아이템 %d개" % len(footprint), True
     if ess_bad:
         log("불타는 정수 묶음 %d개의 수량을 읽지 못함: 이번 판 정수 개수는 세지 않음" % len(ess_bad))
     else:
@@ -1465,6 +1528,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
 
         walk(check_left)
         _held_save(held_now)
+        snap("인벤토리 정리 뒤")
         npc = {k: later[k] for k in ("register", "swap", "keep", "essence", "leave") if later.get(k)}
         need["npc"] = bool(npc)
         need["what"] = npc
@@ -1630,6 +1694,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         pass
     n4 = norm_now()
     left = sum(1 for row in read_inventory(n4) for v in row if v) if n4 is not None else -1
+    snap("보관함 정리 뒤" if at_stash else "대장장이 정리 뒤")
     return "자동 정리 끝: 개별 등록 %d, 교체 %d, 보관 %d, 판매 %d, 남은 칸 %d" % (
         count["register"], count["swap"], count["stash"], count["sell"], left), True
 

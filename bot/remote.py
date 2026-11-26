@@ -19,6 +19,7 @@ from . import paths
 
 SNAP_RE = re.compile(r"^[0-9_]+\.jpg$")
 ITEM_RE = re.compile(r"^[0-9]{8}_[0-9]{6}_[0-9]{3}\.jpg$")
+INV_RE = re.compile(r"^(grid_[0-9]{6}|tip_[0-9]{6}_[0-9]{2,3})\.jpg$")
 
 
 def local_ip():
@@ -466,6 +467,27 @@ class Remote:
                 if u.path == "/api/items" and method == "GET":
                     body = json.dumps({"items": read_items(remote.base), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
+                if u.path == "/api/invnow" and method == "GET":
+                    try:
+                        with open(paths.p("inv_now.json"), "r", encoding="utf-8") as f:
+                            d = json.load(f)
+                    except (OSError, ValueError):
+                        d = {"items": [], "t": 0}
+                    d["now"] = time.time()
+                    return self._send(200, json.dumps(d, ensure_ascii=False).encode("utf-8"),
+                                      "application/json; charset=utf-8")
+                if u.path == "/api/invview" and method == "POST":
+                    cb = getattr(remote, "inv_view", None)
+                    if cb:
+                        cb()
+                    return self._send(200, b"{}", "application/json")
+                if u.path.startswith("/invnow/") and method == "GET":
+                    name = u.path[8:]
+                    p = paths.p(os.path.join("inv_now", name))
+                    if INV_RE.match(name) and os.path.isfile(p):
+                        with open(p, "rb") as f:
+                            return self._send(200, f.read(), "image/jpeg", {"Cache-Control": "max-age=3600"})
+                    return self._send(404, b"", "text/plain")
                 if u.path.startswith("/items/") and method == "GET":
                     name = u.path[7:]
                     p = paths.p(os.path.join("collected", name))

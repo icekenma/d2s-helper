@@ -423,6 +423,48 @@ class App(tk.Tk):
             who, limit_text(ls["limit_normal"]), limit_text(ls["limit_fast"])))
         self._share()
 
+    def _inv_view(self, who="휴대폰"):
+        """'지금 인벤토리': read every item in the bags (nothing moved) for the phone."""
+        if self.engine is not None:
+            self.engine.state["inv_view"] = time.time()
+            self._say("%s에서 인벤토리 보기: 인벤토리를 잠깐 열어 아이템을 읽음" % who)
+            return
+        if getattr(self, "viewing", False):
+            return
+        self.viewing = True
+        self._say("%s에서 인벤토리 보기: 인벤토리를 열어 아이템을 읽음 (게임 창이 앞에 있을 때)" % who)
+
+        def work():
+            from bot.gameio import GameIO
+            if not self.io_lock.acquire(timeout=10):
+                self.q.put(("log", "인벤토리 보기: 다른 작업 중이라 못 읽음"))
+                self.viewing = False
+                return
+            io = GameIO(TITLE)
+            log = lambda m: self.q.put(("log", m))
+            try:
+                f = io.grab()
+                if f is None:
+                    log("인벤토리 보기: 게임 창을 찾지 못함")
+                    return
+                geo = sorter.Geo(f)
+                opened = sorter.seen(geo.normalize(f), "inv") < 0.7
+                if opened:
+                    io.key("c")
+                    time.sleep(0.8)
+                text, _ = sorter.cleanup(io, ENGINE_CFG.get("sort", {}), BASE, log, None, mode="view")
+                log("[인벤토리 보기] " + text)
+                if opened:
+                    io.key("c")
+                    time.sleep(0.3)
+            except Exception as e:
+                log("인벤토리 보기 오류: %s" % e)
+            finally:
+                io.close()
+                self.io_lock.release()
+                self.viewing = False
+        threading.Thread(target=work, daemon=True).start()
+
     def _tidy_now(self, who="휴대폰"):
         """'인벤토리 즉시 정리': out of the stage now, the stash in town, then on hunting."""
         if self.engine is None:
@@ -754,6 +796,7 @@ class App(tk.Tk):
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
+            self.remote.inv_view = lambda: self.q.put(("inv_view", None))
             self.remote.note = lambda m: self.q.put(("log", m))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
@@ -886,6 +929,8 @@ class App(tk.Tk):
                     self._set_limits(p)
                 elif kind == "tidy_now":
                     self._tidy_now()
+                elif kind == "inv_view":
+                    self._inv_view()
                 elif kind == "alert_test":
                     self.watch.test()
                 elif kind == "keep_star":

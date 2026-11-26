@@ -471,6 +471,7 @@ class Picker:
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tt_direct, self.tt_best = 0, 0.0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
+        self.view_seen = float(self.state.get("inv_view", 0) or 0)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -1307,6 +1308,41 @@ class Picker:
             self.log("[3단계] 클릭 못 함: 게임 위에 창이 열려 있음")
         return True
 
+    def _inv_view(self):
+        """Read the bags for the phone (sorter mode 'view': hover each item, move nothing)."""
+        frame = self.io.grab()
+        if frame is None:
+            return
+        geo = sorter.Geo(frame)
+        opened = False
+        if sorter.seen(geo.normalize(frame), "inv") < 0.7:
+            self.io.key("c")
+            opened = True
+        ok = False
+        for _ in range(8):
+            time.sleep(0.15)
+            f = self.io.grab()
+            if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
+                ok = True
+                break
+        if ok:
+            base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+            try:
+                text, _ = sorter.cleanup(self.io, self.opts.get("sort") or {}, base, self.log, None, mode="view")
+            except Exception as e:
+                text = "지금 인벤토리 읽기 오류: %s" % e
+            self.log("[인벤토리 보기] " + text)
+        else:
+            self.log("[인벤토리 보기] 인벤토리를 열지 못함")
+        if opened or ok:
+            self.io.key("c")
+            time.sleep(0.3)
+            f = self.io.grab()
+            if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
+                self.io.key(Key.esc)
+                time.sleep(0.2)
+        self.frame = None
+
     def _tidy_bags(self):
         """Open the inventory, sell what the rules sell (Shift+click there), close it.
         -> (text, need_npc, need) or None when the inventory did not open."""
@@ -1935,6 +1971,13 @@ class Picker:
                     return
                 self.tidy_seen = tn
                 self.log("[즉시 정리] 마을로 나가지 못함 (6번): 판이 끝나면 마을 창고에서 정리")
+        iv = self.state.get("inv_view", 0) or 0
+        if iv > self.view_seen and (not self.busy or now - iv > 20):
+            # the phone's '지금 읽기': open the bags, read every item (nothing is moved), close them
+            self.view_seen = iv
+            self.release()
+            self._inv_view()
+            return
         if self.busy:
             self._stalled(now, "게임 위에 창이 열려 있음 (대장장이·인벤토리·웨이포인트 창이 아닌데 이 문구가 계속 나오면 알려 주세요)")
             return
