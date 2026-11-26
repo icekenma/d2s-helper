@@ -262,15 +262,18 @@ def find_item_labels(frame, s, kinds=None):
 
 
 def rare_bow_label(frame, l, s):
-    """A rare (yellow) name on the ground worth picking up: only bows ('… 보우'), the rest is sold anyway."""
+    """A rare (yellow) name on the ground worth picking up: arrows / bolts, and bows when rare bows are kept
+    ('… 화살', '… 볼트', '… 보우'); every other rare is sold anyway."""
     _k, cx, cy, bw = l
     h, w = frame.shape[:2]
     x0, x1 = int(max(0, cx - bw / 2 - 4 * s)), int(min(w, cx + bw / 2 + 4 * s))
     y0, y1 = int(max(0, cy - 11 * s)), int(min(h, cy + 11 * s))
-    if x1 - x0 < 10 or y1 - y0 < 6 or "보우" not in spot._words:
+    if x1 - x0 < 10 or y1 - y0 < 6:
         return False
     R, G, B = LABEL_PAL["rare"]
-    return spot.score(spot.colour_mask(frame[y0:y1, x0:x1], s, (B, G, R)), "보우") >= RARE_BOW_NEED
+    m = spot.colour_mask(frame[y0:y1, x0:x1], s, (B, G, R))
+    words = ["화살", "볼트"] + (["보우"] if sorter.PLAY.get("rare_bow", True) else [])
+    return any(w in spot._words and spot.score(m, w) >= RARE_BOW_NEED for w in words)
 
 
 def sale_notice(v, cx, cy, s):
@@ -1195,8 +1198,7 @@ class Picker:
                 k.add("unique")             # (set items are not picked up: always sold anyway)
             return k if self.fast_pick is not None else set()
         k = {"unique", "magic", "charm"}       # set items are not picked up (the user's rule)
-        if o.get("rare_bow", True):
-            k.add("rare")                  # rares: an Amazon bow / crossbow of level 60+ is kept, the rest sold
+        k.add("rare")                      # rares: arrows / bolts (always) and bows (레어 활 보관) are kept
         return k
 
     def _gather(self, frame, now):
@@ -1233,7 +1235,7 @@ class Picker:
             labs = keep_
             if skip_ and not self.g_rare_note:
                 self.g_rare_note = True
-                self.log("[3단계] 레어 이름표 %d개는 활('보우')이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
+                self.log("[3단계] 레어 이름표 %d개는 화살·볼트·활이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
         chests = find_chests(f, s) if self.opts.get("open_chests", False) else []
         try:
             full = sorter.inventory_full(sorter.Geo(f).normalize(f),

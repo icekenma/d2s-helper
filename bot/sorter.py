@@ -1405,6 +1405,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "essence"                    # small charms (magic or rare): always to the stash
         if ev["color"] == "green":
             return "sell"                       # set items: never picked up, always sold if one came in
+        if ev["color"] == "yellow" and ev.get("quiver"):
+            ev["kind"] = "레어 " + ev["quiver"]
+            return "keep"                       # rare arrows / bolts: collected, to the stash (the user's rule)
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
             cells = footprint.get(cell, []) if cell is not None else []

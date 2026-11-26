@@ -265,6 +265,7 @@ KEEP_LIST = {"order": [], "classes": {}}     # assets/keep_list.json: what to ke
 KEEP_SET = set()                             # every name in it
 _keep_pics = []                              # (name, float32 picture of the name line, layout scale)
 KEEP_PIC_NEED = 0.76
+QUIVER_NEED = 0.75                           # '화살' / '볼트' picture on a rare's base line
 ED_NEED = 0.72                               # '피해 증가' picture on a jewel line
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
 KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
@@ -454,6 +455,11 @@ def evaluate(crop, s, keep_words=None):
         # line - one number - before the first magic line)
         if "보우" in spot._words:
             out["bow"] = max([spot.score(rows(l), "보우") for l in lines[1:3]] or [0.0])
+        for qw in ("화살", "볼트"):
+            # rare arrows / bolts (the base line): collected, always to the stash
+            if qw in spot._words and max([spot.score(rows(l), qw) for l in lines[1:3]] or [0.0]) >= QUIVER_NEED:
+                out["quiver"] = qw
+                break
         req = None
         for l in lines[1:]:
             if l["color"] in ("blue", "purple", "red"):
@@ -500,6 +506,8 @@ def evaluate(crop, s, keep_words=None):
                 base = text(lines[1]).replace(" ", "")
                 if any(w in base for w in ("보우", "크로스", "발리스타", "아발레스트", "추코누")):
                     out["bow_text"] = True
+                if base.endswith("화살") or base.endswith("볼트"):
+                    out["quiver"] = "화살" if base.endswith("화살") else "볼트"
                 for l in lines[1:]:
                     t_ = text(l).replace(" ", "")
                     if "필요레벨" in t_ or "필요레" in t_:
