@@ -159,6 +159,12 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 .scan button{border:0;color:var(--gold2);background:linear-gradient(#2a241f,#1a1613);box-shadow:inset 0 0 0 1px var(--gold)}
 .scan button[disabled]{color:var(--ash);box-shadow:inset 0 0 0 1px var(--edge)}
 .scan a{padding:0 16px;color:var(--bone);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.logdl{margin-top:10px;padding:12px 14px;border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.logdl-h b{display:block;font-size:14px;color:var(--gold2)}.logdl-h small{display:block;font-size:12px;color:var(--ash);margin-top:2px}
+.logdl-b{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
+.logdl-b a{display:flex;align-items:center;justify-content:center;height:40px;border-radius:10px;font-size:13px;font-weight:700;
+ color:var(--bone);text-decoration:none;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge)}
+.logdl-b a:active{box-shadow:inset 0 0 0 1px var(--gold);color:var(--gold2)}
 details{border-radius:var(--r);background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 summary{padding:13px 16px;font-size:14px;font-weight:600;color:var(--ash);list-style:none;display:flex;justify-content:space-between}
 summary::after{content:"+";color:var(--dim);font-weight:400}
@@ -740,6 +746,14 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
   </div>
   <p class="hint" id="scanHint">마을에서 대장장이 창이나 보관함을 연 뒤 누르세요. 아이템마다 마우스만 올려 정보창을 찍습니다.</p>
   <details><summary>기록 보기</summary><pre id="log"></pre></details>
+  <div class="logdl">
+   <div class="logdl-h"><b>로그 파일 받기</b><small>설정·상태·판 기록·전체 로그를 한 파일로 (Claude에게 올리기용)</small></div>
+   <div class="logdl-b">
+    <a href="/api/logfile?min=10" download>10분</a><a href="/api/logfile?min=30" download>30분</a>
+    <a href="/api/logfile?min=60" download>1시간</a><a href="/api/logfile?min=180" download>3시간</a>
+    <a href="/api/logfile?min=0" download>오늘 전체</a>
+   </div>
+  </div>
  </div>
 </div>
 <script>

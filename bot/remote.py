@@ -429,6 +429,23 @@ class Remote:
                 if u.path in ("/api/sort", "/api/scan") and method == "POST":
                     remote.sort()                # (this slot now starts the gear scan)
                     return self._send(200, b"{}", "application/json")
+                if u.path == "/api/logfile" and method == "GET":
+                    from . import logfile
+                    try:
+                        mins = int(q.get("min", ["30"])[0])
+                    except ValueError:
+                        mins = 30
+                    meta = {}
+                    cb = getattr(remote, "log_meta", None)
+                    if cb:
+                        try:
+                            meta = cb()
+                        except Exception as e:
+                            meta = {"version": "상태 읽기 오류: %s" % e}
+                    name, data = logfile.export(mins, meta)
+                    return self._send(200, data, "text/plain; charset=utf-8",
+                                      {"Content-Disposition": 'attachment; filename="%s"' % name,
+                                       "Cache-Control": "no-store"})
                 if u.path == "/scan/latest.zip" and method == "GET":
                     d = os.path.join(remote.base, "gear_scan")
                     zips = sorted(z for z in (os.listdir(d) if os.path.isdir(d) else []) if z.endswith(".zip"))

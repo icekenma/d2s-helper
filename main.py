@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from pynput import keyboard
 
-from bot import alert, scorer, sorter, spot, win
+from bot import alert, logfile, scorer, sorter, spot, win
 from bot.engine import Engine, STAGE_LIMIT, FAST_LIMIT, stage_limit, limit_text
 from bot.keyrec import KeyRecorder
 from bot.picker import PickerThread
@@ -936,6 +936,19 @@ class App(tk.Tk):
             self.l_cd.configure(text="%d:%02d" % (sec // 60, sec % 60), fg=RED if sec <= 30 else GOLD)
             self.l_cd_note.configure(text="다음 판까지" if sec else "다음 판으로 이동 중")
 
+    def _log_meta(self):
+        """What goes at the top of a downloaded log file (called from the phone server's thread)."""
+        st = {k: v for k, v in dict(self.shared or {}).items() if k not in ("log", "rules")}
+        eng = {}
+        try:
+            if self.engine is not None:
+                eng = {k: v for k, v in dict(self.engine.state).items()
+                       if isinstance(v, (int, float, str, bool)) or v is None}
+        except Exception:
+            pass
+        return {"version": "v%s (%s)" % (local_version(BASE), TITLE),
+                "state": {"phone": st, "engine": eng}, "config": dict(self.cfg)}
+
     def _share(self):
         left = self._stage_left()
         self.shared = {"stage_left": left, "stage_limit": self._limit(), "running": self.engine is not None, "sorting": False, "runs": self.runs,
@@ -971,6 +984,7 @@ class App(tk.Tk):
             self.remote.sell_now = lambda d: self.q.put(("sell_now", d))
             self.remote.note = lambda m: self.q.put(("log", m))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
+            self.remote.log_meta = self._log_meta
             self.remote.start()
             self._show_url()
             threading.Thread(target=self._find_public_ip, daemon=True).start()
@@ -1068,6 +1082,7 @@ class App(tk.Tk):
     def _say(self, msg):
         self.last_line = time.time()
         line = "%s  %s" % (time.strftime("%H:%M:%S"), msg)
+        logfile.write(msg, self.last_line)          # every line also into the day file (phone: 로그 파일 받기)
         self.logbuf.append(line)
         del self.logbuf[:-200]
         self.log.configure(state="normal")
