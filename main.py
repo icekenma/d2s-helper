@@ -529,6 +529,16 @@ class App(tk.Tk):
         self.engine.state["tidy_now"] = now
         self._say("%s에서 인벤토리 즉시 정리: 지금 마을로 가서 창고 정리 후 사냥을 이어감" % who)
 
+    def _ess_check(self, who="휴대폰"):
+        """'정수 개수 확인': after this run, the stash chest in town: count the burning essences in the stash
+        (every tab) and in the bags, and set both counts on the phone."""
+        if self.engine is None:
+            self._say("%s에서 정수 개수 확인: 도우미가 멈춰 있음 (시작한 뒤에 누르세요)" % who)
+            return
+        self.engine.state["ess_check"] = time.time()
+        self._say("%s에서 정수 개수 확인 예약: 이번 판이 끝나면 마을 보관함에서 인벤토리·보관함 정수를 셈" % who)
+        self._share()
+
     def _set_alert(self, changes, who="휴대폰"):
         c = self.watch.conf
         if "on" in changes:
@@ -934,7 +944,9 @@ class App(tk.Tk):
                        "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
                        "limits": self._limits_state(), "play": self._play(),
                        "climb": bool(self.cfg.get("climb", False)), "climb_ok": getattr(self, "climb_ok", 0),
-                       "climb_fails": getattr(self, "climb_fails", 0), "climb_max": CLIMB_FAILS}
+                       "climb_fails": getattr(self, "climb_fails", 0), "climb_max": CLIMB_FAILS,
+                       "ess_check": bool(self.engine is not None and self.engine.state.get("ess_check")),
+                       "ess_result": (self.engine.state.get("ess_result") if self.engine is not None else None)}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -954,6 +966,7 @@ class App(tk.Tk):
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
+            self.remote.ess_check = lambda: self.q.put(("ess_check", None))
             self.remote.inv_view = lambda: self.q.put(("inv_view", None))
             self.remote.sell_now = lambda d: self.q.put(("sell_now", d))
             self.remote.note = lambda m: self.q.put(("log", m))
@@ -1094,6 +1107,8 @@ class App(tk.Tk):
                     self._set_limits(p)
                 elif kind == "tidy_now":
                     self._tidy_now()
+                elif kind == "ess_check":
+                    self._ess_check()
                 elif kind == "inv_view":
                     self._inv_view()
                 elif kind == "sell_now":

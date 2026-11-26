@@ -355,6 +355,11 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/ess_check" and method == "POST":
+                    cb = getattr(remote, "ess_check", None)
+                    if cb:
+                        cb()
+                    return self._send(200, b'{"ok":true}', "application/json")
                 if u.path == "/api/tidy_now" and method == "POST":
                     cb = getattr(remote, "tidy_now", None)
                     if cb:

@@ -877,6 +877,9 @@ class Picker:
         if self.town_since is None:
             self.town_since = now
             self.wp_walks = 0
+        if self.state.get("ess_check") and not self.state.get("town_tidy"):
+            self.state["town_tidy"] = now                # '정수 개수 확인': the stash chest first
+            self.log("[정수 확인] 마을 도착: 보관함에서 정수 개수를 셈")
         if self.state.get("town_tidy"):
             self.wp_walks = 0
             self._town_tidy(frame, s, now)
@@ -1110,6 +1113,18 @@ class Picker:
         except Exception as e:
             text, done = "보관함 정리 오류: %s" % e, True
         self.log("[마을] " + text)
+        if self.state.get("ess_check"):
+            try:
+                res = sorter.count_burning(self.io, base, self.log)
+            except Exception as e:
+                res = None
+                self.log("[정수 확인] 오류: %s" % e)
+            if res is not None:
+                from . import runlog
+                runlog.set_inv(res["inv"])
+                runlog.set_stash(res["stash"])
+                self.state["ess_result"] = dict(res, t=time.time())
+            self.state["ess_check"] = 0
         self.state["cleaned"] = time.time()
         self.io.key(Key.esc)                      # closes the stash and the inventory beside it
         time.sleep(0.5)

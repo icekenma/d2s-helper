@@ -202,7 +202,11 @@ def _ess_templates(base_dir):
 def essence_cell(norm, col, row, base_dir):
     """True when the cell shows an essence (navy night sky with little crosses over a crystal),
     from the picture alone: no info box needed, so it is never mistaken for part of another item."""
-    x, y = INV_X + CELL * col, INV_Y + CELL * row
+    return essence_at(norm, INV_X + CELL * col, INV_Y + CELL * row, base_dir)
+
+
+def essence_at(norm, x, y, base_dir):
+    """essence_cell() for a cell whose top-left corner is x, y (the stash's cells too)."""
     inner = norm[y + 2:y + CELL - 1, x + 2:x + CELL - 1]
     if inner.shape[0] < 20 or inner.shape[1] < 20:
         return False
@@ -220,7 +224,10 @@ def essence_cell(norm, col, row, base_dir):
 
 def burning_cell(norm, col, row):
     """An essence cell whose crystal is red / orange: 불타는 공포의 정수 (the others are blue, ...)."""
-    x, y = INV_X + CELL * col, INV_Y + CELL * row
+    return burning_at(norm, INV_X + CELL * col, INV_Y + CELL * row)
+
+
+def burning_at(norm, x, y):
     c = norm[y + 2:y + CELL - 2, x + 2:x + CELL - 2].astype(np.int32)
     if c.size == 0:
         return False
@@ -228,6 +235,85 @@ def burning_cell(norm, col, row):
     red = ((r > 160) & (r - b > 70)).mean()
     blue = ((b > 150) & (b - r > 40)).mean()
     return red >= 0.07 and blue < 0.04
+
+
+STASH_GRID = (95, 65, 10, 12)          # the stash tab's cells: first corner x, y, columns, rows (any tab)
+
+
+def _hover_qty(io, geo, px, py):
+    """The stack count in the info box of the item at layout point (px, py), or None."""
+    from . import scorer
+    io.move(*geo.raw(*PARK))
+    time.sleep(0.12)
+    base = io.grab()
+    io.move(*geo.raw(px, py))
+    for _ in range(3):
+        time.sleep(0.18)
+        hov = io.grab()
+        if base is None or hov is None:
+            continue
+        tip = tooltip_crop(base, hov, geo)
+        if tip is None:
+            continue
+        try:
+            ev = scorer.evaluate(tip, geo.s)
+        except Exception:
+            ev = None
+        if ev:
+            q = ev.get("qty") if ev.get("qty") is not None else ev.get("qty_raw")
+            if q is not None:
+                return int(q)
+    return None
+
+
+def count_burning(io, base_dir, log):
+    """The stash window is open (bags beside it): 불타는 공포의 정수 in the bags and in every stash tab,
+    each stack's count read from its info box. -> {"inv", "stash", "tabs": {tab: n}, "bad"} or None"""
+    f = io.grab()
+    if f is None:
+        return None
+    geo = Geo(f)
+    n = geo.normalize(f)
+    snap, bad = read_burning(io, geo, n, base_dir)
+    inv = sum(snap.values())
+    tabs_n, stash = {}, 0
+    gx, gy, gc, gr = STASH_GRID
+    for tab in STASH_ORDER:
+        f = io.grab()
+        if f is None:
+            break
+        n = geo.normalize(f)
+        tabs = stash_tabs(n)
+        if tab not in tabs:
+            continue                               # (the old stash has 3 shared tabs)
+        io.click(*geo.raw(*tabs[tab]))
+        time.sleep(0.5)
+        io.move(*geo.raw(*PARK))
+        time.sleep(0.15)
+        f = io.grab()
+        if f is None:
+            break
+        n = geo.normalize(f)
+        (dx, dy), _ = stash_shift(n)
+        got = 0
+        for r in range(gr):
+            for c in range(gc):
+                x, y = gx + dx + CELL * c, gy + dy + CELL * r
+                if not burning_at(n, x, y) or not essence_at(n, x, y, base_dir):
+                    continue
+                q = _hover_qty(io, geo, x + CELL // 2, y + CELL // 2)
+                if q is None:
+                    bad += 1
+                else:
+                    got += q
+        if got:
+            tabs_n[tab] = got
+        stash += got
+    io.move(*geo.raw(*PARK))
+    log("[정수 확인] 인벤토리 %d개, 보관함 %d개 (%s)%s" % (
+        inv, stash, ", ".join("%s %d" % kv for kv in tabs_n.items()) or "보관함에 없음",
+        " · 수량을 못 읽은 묶음 %d개" % bad if bad else ""))
+    return {"inv": inv, "stash": stash, "tabs": tabs_n, "bad": bad}
 
 
 def read_burning(io, geo, norm, base_dir):

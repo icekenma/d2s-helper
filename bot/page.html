@@ -265,6 +265,14 @@ summary::-webkit-details-marker{display:none}
 .hkey i{width:8px;height:8px;border-radius:2px}
 .hkey b{color:var(--bone)}
 .hbtns{display:flex;gap:18px;flex-wrap:wrap}
+.hcheck{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;border:0;text-align:left;font:inherit;color:var(--bone);
+ padding:11px 13px;border-radius:12px;background:var(--abyss);box-shadow:inset 0 0 0 1px rgba(210,163,74,.45)}
+.hcheck span{flex:1;min-width:0}.hcheck b{display:block;font-size:14px;color:var(--gold2)}
+.hcheck small{display:block;font-size:12px;color:var(--ash);margin-top:2px}
+.hcheck i{font-style:normal;font-size:20px;color:var(--gold2)}
+.hcheck.wait{box-shadow:inset 0 0 0 1px rgba(127,191,90,.55)}.hcheck.wait b,.hcheck.wait i{color:var(--life)}
+.hcheck.wait i{animation:spin 1.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hset{margin-top:10px;border:0;background:none;color:var(--gold2);font-size:12.5px;font-weight:700;padding:6px 0}
 /* essence alert */
 .awarn{padding:12px 14px;border-radius:14px;font-size:13.5px;line-height:1.45;color:#ffe9e4;
@@ -592,6 +600,7 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
   <div class="hparts" id="rHoldParts"></div>
   <div class="hbtns"><button type="button" class="hset" id="rInvSet">인벤토리 개수 고치기</button>
    <button type="button" class="hset" id="rStashSet">보관함 개수 입력</button></div>
+  <button type="button" class="hcheck" id="rEssCheck"><span><b>정수 개수 확인</b><small id="rEssCheckSub">판이 끝나면 마을 보관함에 가서 인벤토리·보관함 정수를 직접 세어 맞춤</small></span><i aria-hidden="true">⟳</i></button>
  </div>
  <div class="strip">
   <div class="sh"><b>최근 판</b><span id="rStripN"></span></div>
@@ -743,7 +752,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
   if(s.version){if(pageVer&&s.version!==pageVer){location.reload();return}pageVer=s.version}
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);climbFrom(s);fxFrom(s);playFrom(s);alertFrom(s);limFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);climbFrom(s);essFrom(s);fxFrom(s);playFrom(s);alertFrom(s);limFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -757,6 +766,14 @@ var fastOn=false,fastBusy=0;
 function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));if($("fx"))$("fx").className="fx"+(fastOn?"":" off");
  $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 "+mss(CD.limit||160)+"이 지나면 바로 다음 판 · 아래 확장만 함":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+/* 정수 개수 확인: booked until the stash has been counted */
+var ESS={},essBusy=0;
+function essFrom(s){ESS=s;if(Date.now()<essBusy&&!s.ess_check)return;essDraw()}
+function essDraw(){var b=$("rEssCheck");if(!b)return;var r=ESS.ess_result,wait=!!ESS.ess_check||Date.now()<essBusy;
+ b.className="hcheck"+(wait?" wait":"");
+ $("rEssCheckSub").textContent=wait?"예약됨: 이번 판이 끝나면 마을 보관함에서 셈":
+  r?"마지막 확인 "+hhmm(r.t)+" · 인벤토리 "+r.inv+"개 · 보관함 "+r.stash+"개"+(r.bad?" · 못 읽은 묶음 "+r.bad+"개":""):
+  "판이 끝나면 마을 보관함에 가서 인벤토리·보관함 정수를 직접 세어 맞춤"}
 /* 자동 등반: the newest open stage every run, out to town as soon as the boss dies */
 var climbOn=false,climbBusy=0,climbInfo={};
 function climbDraw(){$("climbBtn").setAttribute("aria-checked",String(climbOn));
@@ -1158,6 +1175,10 @@ function drawHold(){
  $("rHoldParts").insertAdjacentHTML("afterend",key);
  $("rStashSet").textContent=h.stash_set?"보관함 개수 고치기":"보관함 개수 입력";
 }
+$("rEssCheck").onclick=function(){
+ if(!running){$("rEssCheckSub").textContent="도우미가 멈춰 있음: 시작한 뒤에 누르세요";return}
+ if(ESS.ess_check)return;
+ essBusy=Date.now()+5000;essDraw();post("/api/ess_check").then(function(){setTimeout(status,600)}).catch(function(){})};
 $("rInvSet").onclick=function(){
  var cur=hold&&hold.inv!=null?hold.inv:"";
  var v=prompt("지금 인벤토리에 있는 불타는 공포의 정수 개수\n(강화에 쓴 뒤 등. 도우미가 인벤토리를 다시 읽으면 그 값으로 바뀝니다)",cur);
