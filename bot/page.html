@@ -23,7 +23,7 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 
 /* header: view switch */
 .bar{position:sticky;top:0;z-index:5;padding:8px 14px 10px;background:linear-gradient(var(--abyss) 70%,transparent)}
-.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:.8fr 1.15fr 1fr 1.05fr;padding:4px;border-radius:999px;
+.views{max-width:760px;margin:0 auto;display:grid;grid-template-columns:.8fr 1.15fr 1.05fr 1.05fr;padding:4px;border-radius:999px;
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
 .views button{border:0;background:none;color:var(--ash);font-weight:600;font-size:14.5px;padding:9px 0;border-radius:999px;white-space:nowrap}
 .views button[aria-selected=true]{color:var(--abyss);background:linear-gradient(var(--gold2),var(--gold));
@@ -448,7 +448,7 @@ summary::-webkit-details-marker{display:none}
 <div class="bar"><div class="views" role="tablist">
  <button type="button" role="tab" id="v-ctl" aria-selected="true">조작</button>
  <button type="button" role="tab" id="v-items" aria-selected="false">모은 아이템</button>
- <button type="button" role="tab" id="v-runs" aria-selected="false">판 기록</button>
+ <button type="button" role="tab" id="v-runs" aria-selected="false">진행 상황</button>
  <button type="button" role="tab" id="v-keep" aria-selected="false">보관 목록</button>
 </div></div>
 <section class="items rlog" id="runsView" hidden>
@@ -497,7 +497,7 @@ summary::-webkit-details-marker{display:none}
   <div class="abtn"><button type="button" id="aTest">시험 알림 (10초 뒤)</button><button type="button" id="aCopy">주제 복사</button></div>
  </div>
  <div id="rRows"></div>
- <button class="clear" type="button" id="clearRuns">판 기록 비우기</button>
+ <button class="clear" type="button" id="clearRuns">진행 기록 비우기</button>
 </section>
 <section class="items keep" id="keepView" hidden>
  <div class="kp" id="kpNote"></div>
@@ -1053,7 +1053,7 @@ $("clearItems").onclick=function(){
 };
 $("clearRuns").onclick=function(){
  if(!runs.length)return;
- if(!confirm("판 기록 "+runs.length+"판을 비울까요?\n(지금 진행 중인 판은 남고, 지난 기록은 PC에 runs_old_ 파일로 옮겨 둡니다)"))return;
+ if(!confirm("진행 기록 "+runs.length+"판을 비울까요?\n(지금 진행 중인 판은 남고, 지난 기록은 PC에 runs_old_ 파일로 옮겨 둡니다)"))return;
  fetch("/api/runs/clear",{method:"POST"}).then(function(r){return r.json()}).then(function(){openRun=null;loadRuns()}).catch(function(){});
 };
 $("v-ctl").onclick=function(){show("ctl")};$("v-items").onclick=function(){show("items")};$("v-keep").onclick=function(){show("keep")};$("v-runs").onclick=function(){show("runs")};

@@ -209,6 +209,7 @@ def find_labels(frame, s):
 # hides the rest (magic / rare items, items already collected).
 LABEL_PAL = {"set": (0, 166, 0), "unique": (129, 116, 77), "magic": (68, 68, 166), "charm": (166, 109, 0)}
 LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이름)", "charm": "부적(주황 이름)", "chest": "상자"}
+STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), from the middle of the screen at arrival
 TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
 RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
 GATHER_WAIT = (3.0, 8.0)    # after the boss: at least / at most this long for the items to gather round
@@ -424,7 +425,7 @@ class Picker:
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests = False, 0, 0
-        self.tt_since = None
+        self.tt_since, self.tt_clicks, self.tt_click_at = None, 0, 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -784,12 +785,13 @@ class Picker:
             self.release()
 
     def _town_tidy(self, frame, s, now):
-        """In town, before the waypoint: walk to the smith (his window has the stash and the collection tab);
-        the engine tidies up there. Booked when the bags were getting full of things to register / stash."""
+        """In town, before the waypoint: the stash chest (next to where the character arrives) -> register /
+        stash there. If its window does not open, the smith instead (his window has the stash too).
+        Booked when the bags were getting full of things to register / stash."""
         booked = self.state["town_tidy"]
         if self.tt_since is None or self.tt_since < booked:
-            self.tt_since, self.npc_since, self.npc_seen = now, None, False
-            self.log("[마을] 창고 정리: 대장장이(창고)에게 이동 - 등록·보관할 아이템 정리")
+            self.tt_since, self.npc_since, self.npc_seen, self.tt_clicks, self.tt_click_at = now, None, False, 0, 0.0
+            self.log("[마을] 창고 정리 시작: 보관함(창고)으로 이동 - 등록·보관할 아이템 정리")
         if self.state.get("cleaned", 0) > self.tt_since:
             self.state["town_tidy"] = 0
             self.tt_since = None
@@ -800,21 +802,51 @@ class Picker:
             self.state["town_tidy"] = 0
             self.tt_since = None
             self.release()
-            self.log("[마을] 90초 동안 대장장이 창을 열지 못함: 이번에는 정리 없이 웨이포인트로 (다음 판 끝에 다시 시도)")
+            self.log("[마을] 90초 동안 보관함·대장장이 창을 열지 못함: 이번에는 정리 없이 웨이포인트로 (다음 판 끝에 다시 시도)")
             return
+        h, w = frame.shape[:2]
+        if self.tt_clicks < 3:
+            if now - self.tt_click_at < 6.0:
+                return                                   # walking there; its window opens on arrival
+            x = w / 2.0 + STASH_TOWN[0] * s
+            y = self.top + (h - self.top) / 2.0 + STASH_TOWN[1] * s
+            if 0.02 * w < x < 0.98 * w and self._world_click(x, y, portal_ok=True):
+                self.tt_clicks += 1
+                self.tt_click_at = now
+                self.log("[마을] 보관함 클릭 (%d번째): 화면 (%d, %d)" % (self.tt_clicks, x, y))
+                return
+            self.tt_clicks = 3
+            self.log("[마을] 보관함 자리가 화면 밖 (창이 좁음): 대장장이를 찾아 정리")
+        if self.tt_clicks == 3:
+            self.tt_clicks = 4
+            self.log("[마을] 보관함 창이 열리지 않음: 대장장이(창고)를 찾아 정리")
         self._go_smith(frame, s, now, None, None, None, "[마을] 창고 정리")
-        if not self.npc_seen and now - self.tt_since > 4 and now - self.explore_at >= 1.6:
+        if not self.npc_seen and now - self.tt_click_at > 4 and now - self.explore_at >= 1.6:
             # no smith name on screen: look around the town (the same walk as for the waypoint)
             self.explore_at = now
             dx, dy = EXPLORE[self.explore_i % len(EXPLORE)]
             self.explore_i += 1
             if self.explore_i % len(EXPLORE) == 1:
                 self.log("[마을] 대장장이 이름표가 안 보여 주변을 둘러보는 중")
-            h, w = frame.shape[:2]
             if self.mouse:
                 self._walk_to(w / 2.0 + dx * 0.3 * w, h / 2.0 + dy * 0.28 * h, frame, s, now)
             else:
                 self._hold(direction(dx, dy))
+
+    def _stash_tidy(self, now):
+        """The stash window is open in town: register / stash by the rules (no selling here), close it."""
+        self.release()
+        base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+        self.log("[마을] 보관함 창 열림: 등록·보관 정리 시작")
+        try:
+            text, done = sorter.cleanup(self.io, self.opts.get("sort") or {}, base, self.log, None, mode="stash")
+        except Exception as e:
+            text, done = "보관함 정리 오류: %s" % e, True
+        self.log("[마을] " + text)
+        self.state["cleaned"] = time.time()
+        self.io.key(Key.esc)
+        time.sleep(0.4)
+        self.frame = None
 
     # ---- smith ------------------------------------------------------------------------------
     def _go_smith(self, frame, s, now, me, portal, mark, why):
@@ -1435,6 +1467,9 @@ class Picker:
         if o.get("town_start") and self._wp_menu(frame, s, now):
             if self.over_since is not None:
                 self._new_run()
+            return True
+        if self.state.get("town_tidy") and sorter.stash_open(sorter.Geo(frame).normalize(frame)):
+            self._stash_tidy(now)
             return True
         if self._panel_open(frame):
             self.release()                            # the smith's window etc.: the engine works there

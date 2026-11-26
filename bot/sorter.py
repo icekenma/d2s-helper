@@ -1032,11 +1032,15 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return "게임 창을 찾지 못함", False
     geo = Geo(frame)
     inv_only = mode == "inv"
+    at_stash = mode == "stash"                  # the stash chest in town: its own window, no shop
     if need is None:
         need = {}
     if inv_only:
         if seen(geo.normalize(frame), "inv") < 0.7:
             return "인벤토리가 열려 있지 않음", False
+    elif at_stash:
+        if not stash_open(geo.normalize(frame)):
+            return "보관함 창이 열려 있지 않음", False
     elif seen(geo.normalize(frame), "panel") < 0.6:
         return "대장장이 창이 열려 있지 않음", False
     keep_min = int(opts.get("keep_min", 0))
@@ -1482,7 +1486,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     # 3) sell what is left and was positively identified as not worth keeping
     n5 = norm_now()
     left_now = n5 is not None and any(v for row in read_inventory(n5) for v in row)
-    if not stop.is_set() and left_now:
+    if not stop.is_set() and left_now and not at_stash:
         open_shop()
         n3 = norm_now()
         if n3 is None or seen(n3, "shop") < 0.7:

@@ -243,7 +243,7 @@ class App(tk.Tk):
         self.l_upd.pack(side="left")
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
-        ttk.Button(rb, text="판 기록", command=self._open_runs).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="진행 상황", command=self._open_runs).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
@@ -514,19 +514,19 @@ class App(tk.Tk):
             return
         from bot import runlog
         w = self.runs_win = tk.Toplevel(self)
-        w.title("판 기록")
+        w.title("진행 상황")
         w.configure(bg=BG)
         w.geometry("880x620")
         w.minsize(640, 420)
         head = tk.Frame(w, bg=BG)
         head.pack(fill="x", padx=18, pady=(16, 10))
-        tk.Label(head, text="판 기록", bg=BG, fg=TEXT, font=(FONT, 15, "bold")).pack(side="left")
+        tk.Label(head, text="진행 상황", bg=BG, fg=TEXT, font=(FONT, 15, "bold")).pack(side="left")
         live = tk.Label(head, text="", bg=BG, fg=GOLD, font=(FONT, 10, "bold"))
         live.pack(side="left", padx=12)
 
         def clear_runs():
             from tkinter import messagebox
-            if messagebox.askyesno("판 기록 비우기", "판 기록을 비울까요?\n진행 중인 판은 남고, 지난 기록은 runs_old_ 파일로 옮겨 둡니다.",
+            if messagebox.askyesno("진행 기록 비우기", "진행 기록을 비울까요?\n진행 중인 판은 남고, 지난 기록은 runs_old_ 파일로 옮겨 둡니다.",
                                    parent=w):
                 runlog.clear()
                 state["sel"] = None

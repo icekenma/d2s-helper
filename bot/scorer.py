@@ -264,6 +264,7 @@ KEEP_LIST = {"order": [], "classes": {}}     # assets/keep_list.json: what to ke
 KEEP_SET = set()                             # every name in it
 _keep_pics = []                              # (name, float32 picture of the name line, layout scale)
 KEEP_PIC_NEED = 0.76
+ED_NEED = 0.72                               # '피해 증가' picture on a jewel line
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
 KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
 
@@ -400,6 +401,12 @@ def evaluate(crop, s, keep_words=None):
             out["kind"], out["keep"] = "거대 부적", True
         elif spot.has(rows(lines[0]), "주얼", 0.68):
             out["kind"], out["keep"] = "주얼", True
+            # 증뎀 주얼: '+N% 피해 증가' by its picture (no OCR needed; '피해 추가' scores well below)
+            if "피해증가" in spot._words:
+                for l in lines[1:]:
+                    if l["color"] in ("blue", "other", "yellow") and spot.score(rows(l), "피해증가") >= ED_NEED:
+                        out["ed"] = l["numbers"][0] if l["numbers"] else True
+                        break
         elif is_charm:
             out["kind"] = "큰 부적"
         elif color == "yellow" and "화살" in spot._words and word("화살"):
