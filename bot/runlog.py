@@ -123,6 +123,17 @@ def build(limit=200):
 
 
 STASH = "essence_stash.json"
+INV = "essence_inv.json"
+
+
+def set_inv(n):
+    """The user's count of burning essences in the bags, as of now (after spending some at the forge, say).
+    It stands until the helper next reads the bags itself."""
+    try:
+        with _lock, open(paths.p(INV), "w", encoding="utf-8") as f:
+            json.dump({"n": max(0, int(n)), "t": time.time()}, f)
+    except (OSError, ValueError):
+        pass
 
 
 def set_stash(n):
@@ -153,6 +164,14 @@ def holdings(runs=None):
         if st and r.get("t", 0) > st.get("t", 0):
             moved += sum(q for k, q in stacks.items() if k in gone)
     stash = (int(st.get("n", 0)) + moved) if st else None
+    inv_by = "read"
+    try:
+        with open(paths.p(INV), "r", encoding="utf-8") as f:
+            iv = json.load(f)
+        if iv.get("t", 0) > (inv_t or 0):
+            inv, inv_t, inv_by = int(iv.get("n", 0)), iv["t"], "user"   # typed in after the last reading
+    except (OSError, ValueError, KeyError):
+        pass
     since = 0
     if inv_t:
         for r in runs if runs is not None else build(300):
@@ -161,7 +180,7 @@ def holdings(runs=None):
     total = None
     if inv is not None or stash is not None:
         total = (inv or 0) + (stash or 0) + since
-    return {"inv": inv, "inv_t": inv_t, "stash": stash, "stash_set": bool(st), "stash_t": st.get("t") if st else None,
+    return {"inv": inv, "inv_t": inv_t, "inv_by": inv_by, "stash": stash, "stash_set": bool(st), "stash_t": st.get("t") if st else None,
             "since": since, "total": total}
 
 

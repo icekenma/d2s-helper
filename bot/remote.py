@@ -330,14 +330,17 @@ class Remote:
                     if cb:
                         cb()
                     return self._send(200, b"{}", "application/json")
-                if u.path == "/api/stash" and method == "POST":
+                if u.path in ("/api/stash", "/api/inv") and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
                         v = int(json.loads(self.rfile.read(min(n, 1024)) or b"{}").get("n"))
                     except Exception:
-                        return self._send(400, b'{"error":"stash"}', "application/json")
+                        return self._send(400, b'{"error":"count"}', "application/json")
                     from . import runlog
-                    runlog.set_stash(v)
+                    if u.path == "/api/stash":
+                        runlog.set_stash(v)
+                    else:
+                        runlog.set_inv(v)
                     return self._send(200, json.dumps({"n": v}).encode("utf-8"), "application/json")
                 if u.path == "/api/fastext" and method == "POST":
                     try:

@@ -247,6 +247,7 @@ summary::-webkit-details-marker{display:none}
 .hkey span{display:inline-flex;align-items:center;gap:5px}
 .hkey i{width:8px;height:8px;border-radius:2px}
 .hkey b{color:var(--bone)}
+.hbtns{display:flex;gap:18px;flex-wrap:wrap}
 .hset{margin-top:10px;border:0;background:none;color:var(--gold2);font-size:12.5px;font-weight:700;padding:6px 0}
 /* essence alert */
 .awarn{padding:12px 14px;border-radius:14px;font-size:13.5px;line-height:1.45;color:#ffe9e4;
@@ -462,7 +463,8 @@ summary::-webkit-details-marker{display:none}
   <div class="htop"><div class="lb">지금 가진 불타는 정수<small id="rHoldSub">인벤토리를 한 번 읽으면 나옵니다</small></div>
    <div class="hn"><b id="rHoldN">–</b><small>개</small></div></div>
   <div class="hparts" id="rHoldParts"></div>
-  <button type="button" class="hset" id="rStashSet">보관함 개수 입력</button>
+  <div class="hbtns"><button type="button" class="hset" id="rInvSet">인벤토리 개수 고치기</button>
+   <button type="button" class="hset" id="rStashSet">보관함 개수 입력</button></div>
  </div>
  <div class="strip">
   <div class="sh"><b>최근 판</b><span id="rStripN"></span></div>
@@ -873,7 +875,7 @@ var hold=null;
 function drawHold(){
  var h=hold;if(!h)return;
  $("rHoldN").textContent=h.total==null?"–":h.total;
- var sub=[];if(h.inv_t)sub.push("인벤토리 "+hm(h.inv_t)+" 읽음");
+ var sub=[];if(h.inv_t)sub.push("인벤토리 "+hm(h.inv_t)+(h.inv_by==="user"?" 입력":" 읽음"));
  sub.push(h.stash_set?"보관함은 입력한 수 + 도우미가 옮긴 수":"보관함 개수를 넣으면 합계에 더함");
  $("rHoldSub").textContent=sub.join(" · ");
  var inv=h.inv||0,st=h.stash||0,se=h.since||0,all=Math.max(1,inv+st+se);
@@ -885,6 +887,12 @@ function drawHold(){
  $("rHoldParts").insertAdjacentHTML("afterend",key);
  $("rStashSet").textContent=h.stash_set?"보관함 개수 고치기":"보관함 개수 입력";
 }
+$("rInvSet").onclick=function(){
+ var cur=hold&&hold.inv!=null?hold.inv:"";
+ var v=prompt("지금 인벤토리에 있는 불타는 공포의 정수 개수\n(강화에 쓴 뒤 등. 도우미가 인벤토리를 다시 읽으면 그 값으로 바뀝니다)",cur);
+ if(v===null)return;v=parseInt(v,10);if(isNaN(v)||v<0)return;
+ post("/api/inv",{n:v}).then(function(){setTimeout(loadRuns,300)});
+};
 $("rStashSet").onclick=function(){
  var cur=hold&&hold.stash!=null?hold.stash:"";
  var v=prompt("보관함(창고)에 있는 불타는 공포의 정수 개수\n(이후 도우미가 보관함에 옮기는 수는 저절로 더합니다)",cur);
