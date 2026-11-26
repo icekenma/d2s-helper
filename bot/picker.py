@@ -1294,6 +1294,8 @@ class Picker:
         o = self.opts
         if not o.get("gather", True):
             return set()
+        if sorter.blind_now():
+            return set()                    # no info boxes now (game not in front): nothing to sort them with
         if o.get("fast_mode"):
             k = set()
             if o.get("fast_jewel"):
@@ -1563,6 +1565,10 @@ class Picker:
             # taken to the stash in town after the run, only once the bags are getting full
             self.release()
             self.frame = None
+            if sorter.blind_now():
+                self.log("[4단계] 게임 창이 앞으로 안 와 정보창을 읽을 수 없는 동안: 인벤토리 정리 없이 귀환")
+                self.w_stage, self.w_resume = "exit", False
+                return
             if (self.bag_res is not None and self.over_since is not None and self.bag_at > self.over_since
                     and self.bag_at > self.last_gain and not self.w_resume
                     and self.bag_at > self.state.get("cleaned", 0) and self.bag_at > self.state.get("inv_full", 0)):
@@ -1576,6 +1582,12 @@ class Picker:
                 self.w_stage, self.w_resume = "exit", False
                 return
             text, need_npc, need = res
+            if text == sorter.NO_READ:
+                # the game could not come to the front: no info boxes. Do not loop over it: back to town and on
+                self.log("[%s단계] 정보창을 읽을 수 없음 (게임 창이 앞으로 안 옴): 정리 없이 귀환"
+                         % ("3" if self.w_resume else "4"))
+                self.w_stage, self.w_resume = "exit", False
+                return
             free = need.get("free")
             self.log("[%s단계] %s (빈 칸 %s)" % ("3" if self.w_resume else "4", text, "?" if free is None else free))
             if self.w_resume:

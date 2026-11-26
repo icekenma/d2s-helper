@@ -1301,6 +1301,16 @@ def tidy_in_inventory(io, opts, base_dir, log, stop=None):
     return text, bool(need.get("npc")), need
 
 
+BLIND = [0.0]                     # when the game last could not be brought to the front (no info boxes then)
+BLIND_SKIP = 180                  # seconds without picking up / tidying after that (PC locked, ...)
+NO_READ = "정보창을 읽을 수 없어 정리 건너뜀"
+
+
+def blind_now(now=None):
+    """True while the game cannot show info boxes (it could not be brought to the front a little while ago)."""
+    return (now or time.time()) - BLIND[0] < BLIND_SKIP
+
+
 def cleanup(io, opts, base_dir, log, stop, mode="smith", need=None):
     """The tidy-up below; with the game behind other windows its info boxes may not show at all: then the
     game is brought to the front for the tidy-up only, and the window that had the front gets it back."""
@@ -1316,8 +1326,15 @@ def cleanup(io, opts, base_dir, log, stop, mode="smith", need=None):
             log("게임 창이 뒤에 있어 정보창이 안 뜨는 아이템이 있음: 정리하는 동안만 게임 창을 앞으로 가져옴")
             time.sleep(0.5)
         else:
+            # (the PC is locked, a full-screen app has the front ...): no info box will show, and going over
+            # every cell 'not read -> left' only loops. Nothing is touched; pick-up and tidy-ups pause a while.
             prev_fg = None
-            log("게임 창을 앞으로 가져오지 못함: 정보창 없이 정리 (읽지 못한 아이템은 보관함으로)")
+            first = not blind_now()
+            BLIND[0] = time.time()
+            if first:
+                log("게임 창을 앞으로 가져오지 못함 (PC 잠금·다른 전체 화면 앱 등): 정보창이 안 떠 정리를 건너뜀. "
+                    "%d분 동안 아이템 줍기·정리 없이 정수만 모으고 그 뒤 다시 시도" % (BLIND_SKIP // 60))
+            return NO_READ, True
         return _cleanup(io, opts, base_dir, log, stop, probe=False, mode=mode, need=need)
     finally:
         if prev_fg:
