@@ -130,6 +130,71 @@ def _pick(lines):
     return name, base
 
 
+def _prep_arr(img, dst):
+    """_prepare() for an info box already in memory (BGR array)."""
+    if img is None or img.size == 0:
+        return False
+    h, w = img.shape[:2]
+    text = img.max(axis=2) > 105
+    text[:, : int(w * 0.03)] = False
+    text[:, int(w * 0.97):] = False
+    out = np.where(text, 0, 255).astype(np.uint8)
+    out = cv2.resize(out, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+    out = cv2.copyMakeBorder(out, 16, 16, 16, 16, cv2.BORDER_CONSTANT, value=255)
+    ok, buf = cv2.imencode(".png", out)
+    if ok:
+        buf.tofile(dst)
+    return ok
+
+
+_now_ok = [None]          # Windows OCR answered (True) / is missing here (False) / not tried yet (None)
+
+
+def ocr_now(images, timeout=25):
+    """Read several info boxes right now with the Windows OCR, in one go (one PowerShell start, ~2-4 s).
+    -> list of line lists (one per image, [] when unread), or None when the OCR cannot run on this PC."""
+    if os.name != "nt" or _now_ok[0] is False or not images:
+        return None
+    work = paths.p("ocr_now")
+    os.makedirs(work, exist_ok=True)
+    plan = []
+    for i, img in enumerate(images):
+        dst = os.path.abspath(os.path.join(work, "r%02d.png" % i))
+        plan.append(dst if _prep_arr(img, dst) else None)
+    lst, res, ps1 = (os.path.join(work, x) for x in ("list.txt", "out.json", "ocr.ps1"))
+    with open(lst, "w", encoding="utf-8") as f:
+        f.write("\n".join(p_ for p_ in plan if p_))
+    with open(ps1, "w", encoding="utf-8-sig") as f:
+        f.write(PS)
+    try:
+        os.remove(res)
+    except OSError:
+        pass
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, lst, res],
+                       timeout=timeout, capture_output=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        with open(res, "r", encoding="utf-8-sig") as f:
+            raw = f.read().strip()
+    except Exception:
+        return None
+    if raw == "NOKO":
+        _now_ok[0] = False
+        return None
+    try:
+        got = json.loads(raw) if raw else {}
+    except ValueError:
+        return None
+    _now_ok[0] = True
+    out = []
+    for p_ in plan:
+        lines = (got.get(p_) or got.get(p_.replace("/", "\\")) or []) if p_ else []
+        if isinstance(lines, str):
+            lines = [lines]
+        out.append([re.sub(r"\s+", " ", str(t)).strip() for t in lines if str(t).strip()])
+    return out
+
+
 def _todo(limit):
     d = _load()
     out = []

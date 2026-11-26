@@ -217,8 +217,13 @@ STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), fro
 TOWN_TIDY_ITEMS = 3        # this many things to register / stash in the bags: to the stash in town after the run
 TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
 RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
-GATHER_WAIT = (1.0, 4.0)    # after the boss: at least / at most this long for the items to gather round
-GATHER_MAX = 45.0           # picking up the gathered items: at most this long in all (then the next run)
+GATHER_WAIT = (0.7, 4.0)    # after the boss: at least / at most this long for the items to gather round
+GATHER_MAX = 45.0           # picking up: past this long, stop once nothing was picked up for GATHER_IDLE s
+GATHER_IDLE = 8.0
+GATHER_HARD = 150.0         # ... and never longer than this in all
+GATHER_GONE = 0.8           # s with no label left to try before picking up is called done
+PICK_FAIL = 1.8             # s for a clicked label to go (the items lie round the character)
+PICK_TRIES = 3              # failed clicks on one spot before it is left
 RARE_BOW_NEED = 0.6         # a rare's ground label must read '보우' this well to be picked up
 
 
@@ -253,15 +258,53 @@ def find_item_labels(frame, s, kinds=None):
         n, _, st, _ = cv2.connectedComponentsWithStats(wide)
         for i in range(1, n):
             x, y, bw, bh, _a = st[i]
-            if not (9 * s <= bh <= 24 * s and 38 * s <= bw <= 260 * s):
-                continue
-            d = float(m[y:y + bh, x:x + bw].mean())
-            if not (0.08 <= d <= 0.6):
-                continue
-            cx, cy = x + bw / 2.0, y + bh / 2.0
-            if k == "magic" and sale_notice(v, cx, cy, s):
-                continue                               # the game's own auto-sale notice, not an item
-            out.append((k, cx, cy, float(bw)))
+            boxes = [(x, y, bw, bh)]
+            if bh > 24 * s and 38 * s <= bw:
+                boxes = _split_stack(m, x, y, bw, bh, s)   # labels piled on top of each other: one by one
+            for x, y, bw, bh in boxes:
+                if not (9 * s <= bh <= 24 * s and 38 * s <= bw <= 260 * s):
+                    continue
+                d = float(m[y:y + bh, x:x + bw].mean())
+                if not (0.08 <= d <= 0.6):
+                    continue
+                cx, cy = x + bw / 2.0, y + bh / 2.0
+                if k == "magic" and sale_notice(v, cx, cy, s):
+                    continue                           # the game's own auto-sale notice, not an item
+                out.append((k, cx, cy, float(bw)))
+    return out
+
+
+def _split_stack(m, x, y, bw, bh, s):
+    """A tall blob of one label colour: several name labels stacked with no gap the dilation could keep.
+    Cut it at the text-free rows between lines (a gap inside one line of Korean letters is short and the
+    pieces round it are too low to be a line by themselves) -> [(x, y, w, h)] per line."""
+    rows = m[y:y + bh, x:x + bw].sum(axis=1) > 0
+    runs, i = [], 0
+    while i < bh:
+        if rows[i]:
+            j = i
+            while j < bh and rows[j]:
+                j += 1
+            runs.append([i, j])
+            i = j
+        else:
+            i += 1
+    low = 7 * s                                   # one label line's letters are about 9-12 units tall
+    merged = []
+    for r in runs:
+        if merged and (r[0] - merged[-1][1] <= max(1, int(round(1 * s))) or merged[-1][1] - merged[-1][0] < low
+                       or r[1] - r[0] < 3 * s) and r[1] - merged[-1][0] <= 16 * s:
+            merged[-1][1] = r[1]
+        else:
+            merged.append(list(r))
+    out = []
+    for a, b in merged:
+        cols = np.where(m[y + a:y + b, x:x + bw].sum(axis=0) > 0)[0]
+        if not len(cols):
+            continue
+        pad = max(1, int(2 * s))
+        y0, y1 = max(y, y + a - pad), min(y + bh, y + b + pad)
+        out.append((int(x + cols[0]), int(y0), int(cols[-1] - cols[0] + 1), int(max(9 * s, y1 - y0))))
     return out
 
 
@@ -484,6 +527,7 @@ class Picker:
         self.fast_pick, self.base_kinds = None, set(self.kinds)
         self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
+        self.g_last_ok, self.g_gone = 0.0, None
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
@@ -659,6 +703,7 @@ class Picker:
         self.fast_pick = None
         self.g_t0, self.g_seen, self.g_stable, self.g_look, self.g_goal, self.g_tries = None, None, 0, 0.0, None, {}
         self.g_empty, self.g_done, self.g_full, self.g_ready = 0, False, False, False
+        self.g_last_ok, self.g_gone = 0.0, None
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last = None, 0.0, 0.0, 0, None
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
@@ -1338,7 +1383,7 @@ class Picker:
             self.g_portal = True
             self.log("[2단계] 포탈 확인: 화면 (%d, %d), 보스 처치 %.1f초 뒤" % (self.portal[0], self.portal[1],
                                                                    now - self.over_since))
-        if now - self.g_look < 0.15:
+        if now - self.g_look < 0.1:
             return True
         self.g_look = now
         f = self.io.grab()
@@ -1386,10 +1431,15 @@ class Picker:
                 self.log("[2단계] %.0f초 동안 화면에서 포탈을 못 봄: 그래도 줍기 진행" % waited)
             self.log("[3단계] 아이템이 모임 (%.1f초 기다림): 이름표 %d개, 상자 %d개 - %s" % (
                 waited, len(labs), len(chests), "; ".join("%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in labs) or "없음"))
+        def key(l):
+            return (l[0], int(l[1] // (40 * s)), int(l[2] // (12 * s)))
         g = self.g_goal
         if g is not None:
             pool = chests if g[0] == "chest" else labs
             near = [l for l in pool if l[0] == g[0] and abs(l[1] - g[1]) < 60 * s and abs(l[2] - g[2]) < 14 * s]
+            fewer = g[0] != "chest" and len(g) > 4 and sum(1 for l in pool if l[0] == g[0]) < g[4]
+            if near and fewer and now - g[3] > 0.25:
+                near = []                              # one label of that colour fewer: the others moved up
             if not near and now - g[3] > 0.3 and g[0] == "chest":
                 self.g_chests += 1
                 self.log("[3단계] 상자 열림 (%.1f초, 이번 판 %d번째) - 나온 아이템을 찾음 (아이템 이름표 %d개, 남은 상자 %d개)"
@@ -1397,15 +1447,17 @@ class Picker:
                 self.g_goal = None
                 self.g_empty = 0
                 self.g_look = now + 1.0                # what comes out of it: give it a moment to land
-            elif not near and now - g[3] > 0.3:
+            elif not near and now - g[3] > 0.2:
                 self.count += 1
-                self.last_gain = now
+                self.last_gain = self.g_last_ok = now
                 self.inv_check = None
+                if len(g) > 5:
+                    self.g_tries.pop(g[5], None)       # the next label that lands on this spot is a new item
                 self.log("[3단계] %s 주움 (%.1f초, 이번 판 %d개째, 남은 이름표 %d개, 상자 %d개)"
                          % (LABEL_KO[g[0]], now - g[3], self.count, len(labs), len(chests)))
                 self.g_goal = None
-            elif now - g[3] > 2.5:
-                self.log("[3단계] %s (%d,%d) 2.5초 안에 안 주워짐 (이름표 그대로)" % (LABEL_KO[g[0]], g[1], g[2]))
+            elif now - g[3] > PICK_FAIL:
+                self.log("[3단계] %s (%d,%d) %.1f초 안에 안 주워짐 (이름표 그대로)" % (LABEL_KO[g[0]], g[1], g[2], PICK_FAIL))
                 self.g_goal = None
             else:
                 return True
@@ -1418,12 +1470,10 @@ class Picker:
                      % (self.count, len(labs)))
             return False
 
-        def key(l):
-            return (l[0], int(l[1] // (40 * s)), int(l[2] // (12 * s)))
-        todo = [l for l in labs if self.g_tries.get(key(l), 0) < 2]
+        todo = [l for l in labs if self.g_tries.get(key(l), 0) < PICK_TRIES]
         if not todo:
             # items first; then the chests one by one (what comes out of one is picked up before the next)
-            todo = [l for l in chests if self.g_tries.get(key(l), 0) < 2]
+            todo = [l for l in chests if self.g_tries.get(key(l), 0) < PICK_TRIES]
             if todo and not self.g_chest_note:
                 self.g_chest_note = True
                 self.log("[3단계] 아이템 이름표 다 처리: 상자 %d개 열기 시작" % len(todo))
@@ -1431,20 +1481,25 @@ class Picker:
                 self.g_chest_note = True
                 self.log("[3단계] 화면에서 '상자' 이름표를 찾지 못함 (상자가 있었다면 그 화면을 캡처해 주세요)")
         self.g_max = max(self.g_max, len(labs) + len(chests))
-        if not todo or waited > GATHER_MAX:
+        over_time = waited > GATHER_HARD or (waited > GATHER_MAX and now - max(self.g_last_ok, self.g_t0) > GATHER_IDLE)
+        if not todo or over_time:
             self.g_empty += 1
-            if waited <= GATHER_MAX and (self.g_empty < 3 or (self.count == 0 and self.g_chests == 0
-                                                              and waited < GATHER_WAIT[1] + 2)):
+            if self.g_gone is None:
+                self.g_gone = now
+            if not over_time and (now - self.g_gone < GATHER_GONE or (self.count == 0 and self.g_chests == 0
+                                                                       and waited < GATHER_WAIT[1] + 2)):
                 return True                            # look again: labels shift after a pick-up, and late
                                                        # drops (from a chest, slow to come round) still land
             self.g_done = True
             self.release()
-            left = [l for l in labs if self.g_tries.get(key(l), 0) >= 2] + [l for l in chests if self.g_tries.get(key(l), 0) >= 2]
+            left = [l for l in labs if self.g_tries.get(key(l), 0) >= PICK_TRIES] + [l for l in chests if self.g_tries.get(key(l), 0) >= PICK_TRIES]
             self.log("[3단계] 줍기 끝: %d개 주움, 상자 %d개 엶, %.0f초%s%s%s" % (
-                self.count, self.g_chests, waited, " (최대 %d초 다 됨)" % GATHER_MAX if waited > GATHER_MAX else "",
+                self.count, self.g_chests, waited, " (시간 다 됨: %d초 넘게 새로 주운 것 없음)" % GATHER_IDLE if over_time else "",
                 "" if self.g_max else " - 화면에서 아이템 이름표·상자를 한 번도 못 봄 (게임 옵션 '아이템 이름 항상 표시'가 켜져 있는지 확인)",
                 (" - 2번 눌러도 안 주워진 이름표 %d개: %s" % (len(left), "; ".join(
                     "%s (%d,%d)" % (LABEL_KO[l[0]], l[1], l[2]) for l in left))) if left else ""))
+            if labs and not over_time:
+                self.log("[3단계] 화면에 남은 이름표 %d개는 %d번 눌러도 안 주워진 것 (자리가 없거나 못 줍는 아이템)" % (len(labs), PICK_TRIES))
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
             self.route_played = True                   # (no route / run-around after this)
             runlog.tag("picked", self.count)
@@ -1452,12 +1507,12 @@ class Picker:
             self.w_stage, self.w_t0, self.w_rounds, self.w_last = "check", now, 0, None
             self.log("[4단계] 마무리: 인벤토리를 열어 필요 없는 것은 그 자리에서 판매(Shift+클릭), 등록·보관할 것은 인벤토리에 둠")
             return True
-        self.g_empty = 0
+        self.g_empty, self.g_gone = 0, None
         l = min(todo, key=lambda q: (self.g_tries.get(key(q), 0), (q[1] - w / 2.0) ** 2 + (q[2] - h / 2.0) ** 2))
         self.g_tries[key(l)] = self.g_tries.get(key(l), 0) + 1
         self.g_n += 1
         if self._world_click(l[1], l[2], portal_ok=True, frame=f):     # a click on the name picks it up
-            self.g_goal = (l[0], l[1], l[2], now)
+            self.g_goal = (l[0], l[1], l[2], now, sum(1 for q in (chests if l[0] == "chest" else labs) if q[0] == l[0]), key(l))
             self.log("[3단계] 클릭 %d: %s 이름표 (%d,%d) - %d번째 시도, 화면의 아이템 이름표 %d개, 상자 %d개"
                      % (self.g_n, LABEL_KO[l[0]], l[1], l[2], self.g_tries[key(l)], len(labs), len(chests)))
         else:
@@ -1610,7 +1665,7 @@ class Picker:
                 self.g_full_ok = self.g_full_at = time.time()   # this full notice is dealt with
                 if free is not None and free >= RESUME_FREE:
                     self.w_stage = None
-                    self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
+                    self.g_done, self.g_empty, self.g_goal, self.g_look, self.g_gone = False, 0, None, 0.0, None
                     self.g_pause += now - self.w_t0          # (the tidy-up time is not pick-up time)
                     self.g_tries = {}                        # labels that failed for lack of room: again
                     self.log("[3단계] 판매로 빈 칸 %d칸: 남은 아이템 이어서 줍기" % free)
@@ -1645,7 +1700,7 @@ class Picker:
                 if self.w_resume:
                     self.w_resume, self.w_stage = False, None
                     self.g_full_ok = self.g_full_at = time.time()
-                    self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
+                    self.g_done, self.g_empty, self.g_goal, self.g_look, self.g_gone = False, 0, None, 0.0, None
                     self.g_pause += now - self.w_t0
                     self.g_tries = {}
                     self.log("[3단계] 대장장이 정리 끝 (%.0f초): 남은 아이템 이어서 줍기" % (now - self.w_t0))

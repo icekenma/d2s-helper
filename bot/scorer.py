@@ -281,6 +281,18 @@ def skill_score(m):
     return best
 
 
+SKILL_RE = re.compile(r"기\s*[술슬숱솔]|전\s*[용웅]")    # '기술' / '(… 전용)' as the Windows OCR reads it
+
+
+def skill_text(lines):
+    """Windows OCR lines of a rare's info box -> (has a skill line, only other classes' skills)."""
+    sk = [t.replace(" ", "") for t in lines[2:] if SKILL_RE.search(t)]
+    if not sk:
+        return False, False
+    other = all(any(c in t for c in OTHER_CLASSES) and "아마존" not in t for t in sk)
+    return True, other
+
+
 OTHER_CLASSES = ("소서리스", "원소술사", "네크로맨서", "강령술사", "팔라딘", "성기사", "바바리안", "야만용사",
                  "드루이드", "어쌔신", "암살자")
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
