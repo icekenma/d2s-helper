@@ -268,7 +268,9 @@ KEEP_PIC_NEED = 0.76
 QUIVER_NEED = 0.75                           # '화살' / '볼트' picture on a rare's base line
 ED_NEED = 0.72                               # '피해 증가' picture on a jewel line
 GC_SKILL_NEED = 0.68                         # '기술' picture on a grand charm's magic line (+1 활과 석궁 기술 ...)
-GC_NO_SKILL = 0.5                            # under this on every line (and lines read): surely no skill
+GC_NO_SKILL = 0.5
+OTHER_CLASSES = ("소서리스", "원소술사", "네크로맨서", "강령술사", "팔라딘", "성기사", "바바리안", "야만용사",
+                 "드루이드", "어쌔신", "암살자")                            # under this on every line (and lines read): surely no skill
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
 KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
 
@@ -462,6 +464,14 @@ def evaluate(crop, s, keep_words=None):
             out["kind"] = "큰 부적"
         elif False:
             pass
+    if color == "yellow" and SKILL_WORD in spot._words:
+        # a skill line on a rare ('+N 아마존 기술', '+N 활과 쇠뇌 기술', '+N 지속 효과·마법 기술' ...):
+        # the magic lines after the name and the base
+        props = [l for l in lines[2:] if l["color"] in ("blue", "other")]
+        rs = max([spot.score(rows(l), SKILL_WORD) for l in props] or [0.0])
+        out["rare_skill_score"] = rs
+        if rs >= GC_SKILL_NEED:
+            out["rare_skill"] = True
     if color == "yellow":
         # rare: a bow / crossbow ('보우' on the base line) and its required level (the last requirement
         # line - one number - before the first magic line)
@@ -519,6 +529,14 @@ def evaluate(crop, s, keep_words=None):
                 m = re.search(r"(\d+)", text(lines[1]).split(":")[-1].translate(QTY_FIX))
                 if m:
                     out["qty"] = int(m.group(1))
+            if color == "yellow" and len(lines) > 2:
+                # skill lines by text: another class's skills only (드루이드, 네크로맨서 ...) are no use here
+                sk = [text(l).replace(" ", "") for l in lines[2:] if l["color"] in ("blue", "other")]
+                sk = [t_ for t_ in sk if SKILL_WORD in t_]
+                if sk:
+                    out["rare_skill"] = True
+                    out["rare_skill_other"] = all(any(c in t_ for c in OTHER_CLASSES) and "아마존" not in t_
+                                                  for t_ in sk)
             if color == "yellow" and len(lines) > 1:
                 base = text(lines[1]).replace(" ", "")
                 if any(w in base for w in ("보우", "크로스", "발리스타", "아발레스트", "추코누")):

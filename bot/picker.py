@@ -268,6 +268,8 @@ def find_item_labels(frame, s, kinds=None):
 def rare_bow_label(frame, l, s):
     """A rare (yellow) name on the ground worth picking up: arrows / bolts, and bows when rare bows are kept
     ('… 화살', '… 볼트', '… 보우'); every other rare is sold anyway."""
+    if sorter.PLAY.get("rare_skill", True):
+        return True                         # 레어 기술 장신구: a skill line only shows in the bags, pick them all
     _k, cx, cy, bw = l
     h, w = frame.shape[:2]
     x0, x1 = int(max(0, cx - bw / 2 - 4 * s)), int(min(w, cx + bw / 2 + 4 * s))

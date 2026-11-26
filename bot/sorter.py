@@ -1419,6 +1419,15 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if ev["color"] == "yellow" and ev.get("quiver"):
             ev["kind"] = "레어 " + ev["quiver"]
             return "keep"                       # rare arrows / bolts: collected, to the stash (the user's rule)
+        if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm") \
+                and PLAY.get("rare_skill", True) and ev.get("rare_skill") and not ev.get("rare_skill_other"):
+            # a rare with a skill line, like the rankers' amulets (+16~18 아마존 기술), gloves (+17 활과 쇠뇌
+            # 기술) and quivers: amulet 1x1, gloves / circlet 2x2 (bows and quivers have their own rules)
+            cells = footprint.get(cell, []) if cell is not None else []
+            wdt_, hgt_ = len({c for c, r in cells}), len({r for c, r in cells})
+            if not cells or (wdt_, hgt_) in ((1, 1), (2, 2)):
+                ev["kind"] = "레어 기술 " + ("목걸이" if (wdt_, hgt_) == (1, 1) else "장갑·서클릿" if cells else "장신구")
+                return "keep"
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
             cells = footprint.get(cell, []) if cell is not None else []

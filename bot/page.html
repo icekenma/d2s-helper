@@ -775,7 +775,8 @@ $("aCopy").onclick=function(){if(!AL)return;var t=AL.topic;
 var PLAYS=[["skip_act","막 건너뛰기","패스트 모드에서 정수 1개짜리 1·2·5막이면 바로 나가 다시 뽑음","1·2·5막도 그대로 사냥"],
  ["open_chests","상자 열기","보스 처치 뒤 모인 상자도 열어 나온 아이템까지 주움","상자는 열지 않음"],
  ["town_tidy","마을 창고 정리","등록·보관할 아이템으로 인벤토리가 차면 판 끝나고 마을 보관함에서 정리","자동으로는 안 감 · 인벤토리 즉시 정리 버튼은 그대로 됨"],
- ["rare_bow","레어 활 보관","필요 레벨 60 이상 레어 활·석궁은 보관함으로","레어는 모두 판매"]];
+ ["rare_bow","레어 활 보관","필요 레벨 60 이상 레어 활·석궁은 보관함으로","레어는 모두 판매"],
+ ["rare_skill","레어 기술 장신구","기술 옵션이 붙은 레어 목걸이·장갑·서클릿은 보관함으로 (레어 이름표를 모두 주움)","레어는 화살·볼트·활·부적만 주움"]];
 var PL=null,plBusy=0;
 function playFrom(s){if(!s.play||Date.now()<plBusy)return;PL=s.play;playDraw()}
 function playDraw(){if(!PL)return;
