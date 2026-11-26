@@ -468,6 +468,7 @@ class Picker:
         self.g_max = 0                             # most labels + chests seen at once this run
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
+        self.tt_direct, self.tt_best = 0, 0.0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -838,6 +839,7 @@ class Picker:
         if self.tt_since is None or self.tt_since < booked:
             self.tt_since, self.npc_since, self.npc_seen, self.tt_clicks, self.tt_click_at = now, None, False, 0, 0.0
             self.tt_scan, self.tt_walks, self.tt_miss, self.tt_wait = None, 0, 0, 5.0
+            self.tt_direct, self.tt_best = 0, 0.0
             self.log("[마을] 창고 정리 시작: 보관함(창고)으로 이동 - 등록·보관할 아이템 정리")
         if self.state.get("cleaned", 0) > self.tt_since:
             self.state["town_tidy"] = 0
@@ -897,7 +899,9 @@ class Picker:
                     continue
                 x0, x1 = int(max(0, x - 110 * s)), int(min(w, x + 110 * s))
                 y0, y1 = int(max(0, y - 90 * s)), int(min(h, y + 15 * s))
-                if spot.score(spot.label_mask(g[y0:y1, x0:x1], s), "보관함") >= 0.72:
+                sc = spot.label_score(g[y0:y1, x0:x1], s, "보관함")
+                self.tt_best = max(self.tt_best, sc)
+                if sc >= 0.70:
                     hit = (x, y)
                     break
             if hit is not None:
@@ -911,8 +915,22 @@ class Picker:
                 return                                   # more spots next step
             self.tt_scan = None
             self.tt_miss += 1
+            best, self.tt_best = self.tt_best, 0.0
+            (gx, gy), how = self._stash_guess(frame, s, cx, cy)
+            if how != "화면 가운데" and self.tt_direct < 2 and 0.04 * w < gx < 0.96 * w \
+                    and self.top + 50 * s < gy < h - 125 * s:
+                # the name did not show (or was not read), but the chest's place is known from the campfire /
+                # waypoint: click it straight away (a little higher the second time: its lid)
+                self.tt_direct += 1
+                tx, ty = gx, gy - (12 * s if self.tt_direct == 2 else 0)
+                if self._world_click(tx, ty, portal_ok=True):
+                    self.tt_clicks += 1
+                    self.tt_click_at, self.tt_wait = now, 5.0
+                    self.log("[마을] '보관함' 이름을 못 읽음 (가장 비슷한 정도 %.2f): %s 기준 계산한 자리 (%d, %d)를 바로 클릭"
+                             % (best, how, tx, ty))
+                return
             if self.tt_miss >= 3:
-                self.log("[마을] 3번 둘러봐도 '보관함' 이름을 못 찾음")
+                self.log("[마을] 3번 둘러봐도 '보관함' 이름을 못 찾음 (가장 비슷한 정도 %.2f)" % best)
                 self.tt_clicks = 3
                 return
             # not found there: step toward it (closer, the chest is not hidden behind someone) and look wider

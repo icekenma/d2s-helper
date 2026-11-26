@@ -53,6 +53,12 @@ def score(mask, name):
     return best
 
 
+def label_score(crop, s, name, spread=(0.9, 0.95, 1.0, 1.05, 1.1)):
+    """score() of a grey world label tried at a few scales round s: the screen's scale is worked out from
+    the window, and a few percent off is enough to lose a small word."""
+    return max(score(label_mask(crop, s * k), name) for k in spread)
+
+
 def has(mask, name, need=0.72):
     return score(mask, name) >= need
 
