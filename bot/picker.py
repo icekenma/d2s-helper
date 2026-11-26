@@ -1018,9 +1018,9 @@ class Picker:
         if self.state.get("inv_full", 0) > max(self.state.get("cleaned", 0), self.g_t0):
             self.g_done = True                         # bags full: the smith, then back to the labels
             self.release()
-            self.w_stage, self.w_t0, self.w_ref, self.w_resume = "smith", now, self.state.get("cleaned", 0), True
+            self.w_stage, self.w_t0, self.w_ref, self.w_resume = "check", now, self.state.get("cleaned", 0), True
             self.npc_since, self.gave_up = None, False
-            self.log("[3단계] 인벤토리가 가득 참 (%d개 주운 뒤): 대장장이에서 정리하고 남은 이름표 %d개를 이어서 주움"
+            self.log("[3단계] 인벤토리가 가득 참 (%d개 주운 뒤): 인벤토리 정리(판매, 필요하면 대장장이) 뒤 남은 이름표 %d개를 이어서 주움"
                      % (self.count, len(labs)))
             return False
 
@@ -1044,7 +1044,7 @@ class Picker:
             self.ess_done, self.ss_done, self.sweep_done = True, True, True
             self.route_played = True                   # (no route / run-around after this)
             self.w_stage, self.w_t0, self.w_rounds, self.w_last = "check", now, 0, None
-            self.log("[4단계] 마무리 확인 시작: 인벤토리에 정수만 있어야 귀환")
+            self.log("[4단계] 마무리: 인벤토리를 열어 필요 없는 것은 그 자리에서 판매(Shift+클릭), 등록·보관할 것만 대장장이로")
             return True
         self.g_empty = 0
         l = min(todo, key=lambda q: (self.g_tries.get(key(q), 0), (q[1] - w / 2.0) ** 2 + (q[2] - h / 2.0) ** 2))
@@ -1058,6 +1058,41 @@ class Picker:
             self.log("[3단계] 클릭 못 함: 게임 위에 창이 열려 있음")
         return True
 
+    def _tidy_bags(self):
+        """Open the inventory, sell what the rules sell (Shift+click there), close it.
+        -> (text, need_npc, need) or None when the inventory did not open."""
+        frame = self.io.grab()
+        if frame is None:
+            return None
+        geo = sorter.Geo(frame)
+        opened = False
+        if sorter.seen(geo.normalize(frame), "inv") < 0.7:
+            self.io.key("c")
+            opened = True
+        ok = False
+        for _ in range(8):
+            time.sleep(0.15)
+            f = self.io.grab()
+            if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
+                ok = True
+                break
+        res = None
+        if ok:
+            base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+            try:
+                res = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
+            except Exception as e:
+                self.log("[4단계] 인벤토리 정리 오류: %s" % e)
+                res = ("인벤토리 정리 오류", True, {"npc": True, "what": {"오류": 1}})
+        if opened or ok:
+            self.io.key("c")
+            time.sleep(0.3)
+            f = self.io.grab()
+            if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
+                self.io.key(Key.esc)
+                time.sleep(0.2)
+        return res
+
     def _wrapup(self, frame, now):
         """Step 4: the bags must hold essences only. Anything else -> the smith (tidy-up by the rules), then
         look again; done -> Esc -> '저장 후 나가기' -> town. A tidy-up that leaves the same things behind twice
@@ -1067,27 +1102,33 @@ class Picker:
         st = self.w_stage
         if st == "check":
             self.release()
-            n = self._count_inventory()
             self.frame = None
-            if n < 0:
-                self.log("[4단계] 인벤토리를 열지 못함: 확인 없이 귀환")
+            res = self._tidy_bags()
+            if res is None:
+                self.log("[4단계] 인벤토리를 열지 못함: 정리 없이 귀환")
                 self.w_stage = "exit"
                 return
-            k = self.inv_other
-            self.log("[4단계] 인벤토리 확인: %d칸 사용 - 정수 %d칸, 그 외 %d칸" % (n, n - k, k))
-            if k == 0:
-                self.log("[4단계] 정수만 남음: 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
+            text, need_npc, need = res
+            self.log("[4단계] " + text)
+            what = need.get("what") or {}
+            if self.w_resume and (not need_npc or (self.w_last is not None and what == self.w_last)):
+                self.w_resume, self.w_stage = False, None      # room made in the bags: on picking up
+                self.g_done, self.g_empty, self.g_goal, self.g_look = False, 0, None, 0.0
+                self.log("[3단계] 인벤토리 정리 끝: 남은 아이템 이어서 줍기")
+                return
+            if not need_npc:
+                self.log("[4단계] 정수 외에 대장장이가 필요한 아이템 없음: 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
                 self.w_stage = "exit"
-            elif self.w_rounds >= 3 or (self.w_last is not None and k >= self.w_last):
-                self.log("[4단계] 정리 뒤에도 정수 외 %d칸이 남음 (정리 규칙상 두는 아이템으로 봄, 정리 %d번): 귀환"
-                         % (k, self.w_rounds))
+            elif self.w_rounds >= 3 or (self.w_last is not None and what == self.w_last):
+                self.log("[4단계] 대장장이에서 정리한 뒤에도 같은 것이 남음 (%s, 정리 %d번): 정리 규칙상 두는 아이템으로 보고 귀환"
+                         % (what, self.w_rounds))
                 self.w_stage = "exit"
             else:
                 self.w_rounds += 1
-                self.w_last = k
+                self.w_last = dict(what)
                 self.w_stage, self.w_t0, self.w_ref = "smith", now, self.state.get("cleaned", 0)
                 self.npc_since, self.gave_up = None, False
-                self.log("[4단계] 정수 외 %d칸 -> 대장장이에게 가서 정리 (%d번째)" % (k, self.w_rounds))
+                self.log("[4단계] 등록·보관할 아이템이 있어 대장장이(창고)에게 감 (%d번째)" % self.w_rounds)
             return
         if st == "smith":
             if self.state.get("cleaned", 0) > self.w_ref:

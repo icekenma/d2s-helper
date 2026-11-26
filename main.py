@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 from pynput import keyboard
 
 from bot import alert, scorer, sorter, spot, win
-from bot.engine import Engine, STAGE_LIMIT, stage_limit, limit_text
+from bot.engine import Engine, STAGE_LIMIT, FAST_LIMIT, stage_limit, limit_text
 from bot.keyrec import KeyRecorder
 from bot.picker import PickerThread
 from bot.record import Recorder
@@ -193,6 +193,19 @@ class App(tk.Tk):
             ttk.Checkbutton(xf, text=label, variable=v,
                             command=lambda k=k: self._set_fast_ext({k: self.v_ext[k].get()}, "PC")).pack(side="left", padx=(8, 0))
 
+        lf = tk.Frame(self, bg=BG)
+        lf.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(lf, text="판 시간 제한", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
+        ls = self._limits_state()
+        self.v_lim_n = tk.StringVar(value=limit_text(ls["limit_normal"]))
+        self.v_lim_f = tk.StringVar(value=limit_text(ls["limit_fast"]))
+        tk.Label(lf, text="일반", bg=BG, fg=TEXT, font=(FONT, 10)).pack(side="left", padx=(10, 4))
+        ttk.Entry(lf, textvariable=self.v_lim_n, width=9, font=(FONT, 10)).pack(side="left")
+        tk.Label(lf, text="패스트", bg=BG, fg=TEXT, font=(FONT, 10)).pack(side="left", padx=(10, 4))
+        ttk.Entry(lf, textvariable=self.v_lim_f, width=9, font=(FONT, 10)).pack(side="left")
+        ttk.Button(lf, text="적용", command=self._apply_limits_pc).pack(side="left", padx=8)
+        tk.Label(lf, text="예: 4분, 2분 40초, 3:20, 200(초)", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
+
         af = tk.Frame(self, bg=BG)
         af.pack(fill="x", padx=20, pady=(0, 10))
         tk.Label(af, text="정수 경고", bg=BG, fg=GOLD, font=(FONT, 11, "bold")).pack(side="left")
@@ -349,6 +362,47 @@ class App(tk.Tk):
                 self.picker.p.wp_frontier = False
         self._say("휴대폰에서 단계 변경: %s" % ("공포 영역 %d단계 반복 (다음 판부터)" % stage if stage
                                            else "단계 미지정 (목록 맨 위 새 단계)"))
+        self._share()
+
+    def _apply_limits_pc(self):
+        def secs(t):
+            import re as _re
+            t = str(t).strip()
+            m = _re.match(r"^(\d+):(\d{1,2})$", t)
+            if m:
+                return int(m.group(1)) * 60 + int(m.group(2))
+            m = _re.match(r"^(?:(\d+)\s*분)?\s*(?:(\d+)\s*초)?$", t)
+            if m and (m.group(1) or m.group(2)):
+                return int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+            return int(t)
+        try:
+            self._set_limits({"normal": secs(self.v_lim_n.get()), "fast": secs(self.v_lim_f.get())}, "PC")
+        except (TypeError, ValueError):
+            self._say("판 시간 제한: '4분', '2분 40초', '3:20', '200' 같은 형식으로 넣어 주세요")
+
+    def _limits_state(self):
+        return {"limit_normal": int(self.cfg.get("limit_normal") or STAGE_LIMIT),
+                "limit_fast": int(self.cfg.get("limit_fast") or FAST_LIMIT)}
+
+    def _set_limits(self, d, who="휴대폰"):
+        """Seconds in one stage before the helper leaves for the next run (normal / 패스트 모드)."""
+        for k, key in (("normal", "limit_normal"), ("fast", "limit_fast")):
+            if k in d:
+                try:
+                    self.cfg[key] = max(60, min(900, int(d[k])))
+                except (TypeError, ValueError):
+                    pass
+        save_cfg(self.cfg)
+        ls = self._limits_state()
+        if self.engine is not None:
+            self.engine.state.update(ls)
+        try:
+            self.v_lim_n.set(limit_text(ls["limit_normal"]))
+            self.v_lim_f.set(limit_text(ls["limit_fast"]))
+        except Exception:
+            pass
+        self._say("%s에서 판 시간 제한 변경: 일반 %s, 패스트 %s (다음 판부터)" % (
+            who, limit_text(ls["limit_normal"]), limit_text(ls["limit_fast"])))
         self._share()
 
     def _set_alert(self, changes, who="휴대폰"):
@@ -597,7 +651,8 @@ class App(tk.Tk):
 
     def _limit(self):
         e = self._fast_ext()
-        return stage_limit({"fast": bool(self.cfg.get("fast_mode", False)), "fast_pick": e["jewel"] or e["unique"]})
+        return stage_limit(dict(self._limits_state(), fast=bool(self.cfg.get("fast_mode", False)),
+                                fast_pick=e["jewel"] or e["unique"]))
 
     def _stage_left(self):
         """Seconds left in this stage before the forced move to the next run, or None outside a stage."""
@@ -621,7 +676,8 @@ class App(tk.Tk):
         self.shared = {"stage_left": left, "stage_limit": self._limit(), "running": self.engine is not None, "sorting": False, "runs": self.runs,
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
-                       "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state()}
+                       "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
+                       "limits": self._limits_state()}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -637,6 +693,7 @@ class App(tk.Tk):
             self.remote.set_fast = lambda on: self.q.put(("fast", on))
             self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
+            self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
             self._show_url()
@@ -702,11 +759,12 @@ class App(tk.Tk):
         ext = self._fast_ext()
         state = {"target": stage, "deaths": 0, "fast": bool(self.cfg.get("fast_mode", False)),
                  "fast_pick": ext["jewel"] or ext["unique"]}
+        state.update(self._limits_state())
         ecfg = json.loads(json.dumps(ENGINE_CFG))
         ecfg["always_town"] = stage > 0
         if self.keys.recording:
             self.rec_toggle()
-        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events),   # a recording replaces the screen sweep
+        popts = dict(PICK_OPTS, town_stage=stage, radius_m=radius, fast_mode=bool(self.cfg.get("fast_mode", False)), route=list(self.keys.events), sort=ecfg.get("sort", {}),   # a recording replaces the screen sweep
                      fast_count=ext["count"], fast_jewel=ext["jewel"], fast_unique=ext["unique"])
         self._say("공포 영역 %d단계만 반복" % stage if stage else "단계 미지정: 목록 맨 위의 새로 열린 단계로 진행")
         self.engine = Engine(ecfg, BASE, emit, self.io_lock, state)
@@ -760,6 +818,8 @@ class App(tk.Tk):
                     self._set_fast_ext(p)
                 elif kind == "alert":
                     self._set_alert(p)
+                elif kind == "limits":
+                    self._set_limits(p)
                 elif kind == "alert_test":
                     self.watch.test()
                 elif kind == "keep_star":

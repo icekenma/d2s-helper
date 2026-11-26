@@ -314,6 +314,17 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/limits" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        d = {k: int(d[k]) for k in ("normal", "fast") if k in d}
+                    except Exception:
+                        return self._send(400, b'{"error":"limits"}', "application/json")
+                    cb = getattr(remote, "set_limits", None)
+                    if cb and d:
+                        cb(d)
+                    return self._send(200, json.dumps(d).encode("utf-8"), "application/json")
                 if u.path == "/api/alert" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)

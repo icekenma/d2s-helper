@@ -81,6 +81,17 @@ button:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
 .fast[aria-checked=true] .sw i{transform:translateX(20px);background:var(--gold2)}
 .fast[aria-checked=true] .ft span{color:var(--gold)}
 @media (prefers-reduced-motion:reduce){.fast .sw,.fast .sw i{transition:none}}
+/* stage time limits */
+.lim{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;padding:12px 14px;border-radius:var(--r);
+ background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
+.lim .lhd{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.lim .lhd b{font-size:14px}.lim .lhd span{font-size:12px;color:var(--ash)}
+.lim .lrow{grid-column:1;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.lim .lrow span{font-size:13.5px;color:var(--ash);width:44px}
+.lim .step output{width:64px;text-align:center;font-size:20px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums}
+.lim .apply{grid-column:2;grid-row:2/4;border:0;height:96px;padding:0 16px;border-radius:12px;font-weight:800;color:#1b130a;
+ background:linear-gradient(var(--gold2),var(--gold))}
+.lim .apply:disabled{background:var(--iron2);color:var(--dim);box-shadow:inset 0 0 0 1px var(--edge)}
 /* stage to repeat */
 .stage{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 12px;padding:12px 14px;border-radius:var(--r);
  background:var(--iron);box-shadow:inset 0 0 0 1px var(--edge)}
@@ -536,6 +547,14 @@ summary::-webkit-details-marker{display:none}
    <button type="button" data-k="jewel" aria-pressed="false">주얼 줍기<small>증뎀 표시</small></button>
    <button type="button" data-k="unique" aria-pressed="false">유니크 줍기<small>보관 목록은 보관함</small></button>
   </div>
+  <div class="lim" id="limBox">
+   <div class="lhd"><b>판 시간 제한</b><span id="limNote">지나면 무조건 다음 판</span></div>
+   <div class="lrow"><span>일반</span><div class="step"><button type="button" data-k="normal" data-d="-10" aria-label="일반 10초 줄임">−</button>
+    <output id="limN">-:--</output><button type="button" data-k="normal" data-d="10" aria-label="일반 10초 늘림">+</button></div></div>
+   <div class="lrow"><span>패스트</span><div class="step"><button type="button" data-k="fast" data-d="-10" aria-label="패스트 10초 줄임">−</button>
+    <output id="limF">-:--</output><button type="button" data-k="fast" data-d="10" aria-label="패스트 10초 늘림">+</button></div></div>
+   <button type="button" class="apply" id="limApply" disabled>적용</button>
+  </div>
   <div class="screen empty" id="screen" aria-label="게임 화면. 누르면 그 자리 클릭, 길게 누르면 그쪽으로 계속 달림">
    <img id="live" alt="">
    <div class="wait" id="wait">게임 화면을 불러오는 중</div>
@@ -582,7 +601,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
   if(s.version){if(pageVer&&s.version!==pageVer){location.reload();return}pageVer=s.version}
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);alertFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);alertFrom(s);limFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -596,6 +615,15 @@ var fastOn=false,fastBusy=0;
 function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));if($("fx"))$("fx").className="fx"+(fastOn?"":" off");
  $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 "+mss(CD.limit||160)+"이 지나면 바로 다음 판 · 아래 확장만 함":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+/* stage time limits: edited here, sent with 적용 */
+var LIM={normal:240,fast:160},limEdit=null;
+function limShow(){var v=limEdit||LIM;$("limN").textContent=mss(v.normal);$("limF").textContent=mss(v.fast);
+ $("limApply").disabled=!limEdit||(limEdit.normal===LIM.normal&&limEdit.fast===LIM.fast)}
+function limFrom(s){if(!s.limits)return;LIM={normal:s.limits.limit_normal,fast:s.limits.limit_fast};limShow()}
+Array.prototype.forEach.call(document.querySelectorAll(".lim .step button"),function(b){b.onclick=function(){
+ limEdit=limEdit||{normal:LIM.normal,fast:LIM.fast};var k=b.dataset.k;limEdit[k]=Math.max(60,Math.min(900,limEdit[k]+(+b.dataset.d)));limShow()}});
+$("limApply").onclick=function(){if(!limEdit)return;var d=limEdit;post("/api/limits",d).then(function(){LIM={normal:d.normal,fast:d.fast};limEdit=null;limShow();
+ $("limNote").textContent="바꿈 · 다음 판부터";setTimeout(function(){$("limNote").textContent="지나면 무조건 다음 판"},3000);setTimeout(status,500)})};
 /* essence alert: on/off, minutes, test */
 var AL=null,alBusy=0;
 function alertFrom(s){if(!s.alert||Date.now()<alBusy)return;AL=s.alert;alertDraw()}

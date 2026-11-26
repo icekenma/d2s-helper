@@ -35,8 +35,8 @@ def limit_text(sec):
 def stage_limit(state):
     st = state or {}
     if st.get("fast"):
-        return FAST_LIMIT + (FAST_PICK_EXTRA if st.get("fast_pick") else 0)
-    return STAGE_LIMIT
+        return int(st.get("limit_fast") or FAST_LIMIT) + (FAST_PICK_EXTRA if st.get("fast_pick") else 0)
+    return int(st.get("limit_normal") or STAGE_LIMIT)
 
 
 def grab_client(sct, rect):

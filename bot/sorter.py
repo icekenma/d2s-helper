@@ -977,10 +977,19 @@ def record_item(base_dir, action, ev, tip, tab=""):
 NEED_FRONT = "__need_front__"
 
 
-def cleanup(io, opts, base_dir, log, stop):
+def tidy_in_inventory(io, opts, base_dir, log, stop=None):
+    """With only the inventory open (no smith): read every item, sell the ones the rules sell with
+    Shift+click right there, count the essences. -> (text, need_npc): need_npc says whether something is
+    left that only the smith's window can handle (register in the collection tab, put in the stash)."""
+    need = {}
+    text, done = cleanup(io, opts, base_dir, log, stop, mode="inv", need=need)
+    return text, bool(need.get("npc")), need
+
+
+def cleanup(io, opts, base_dir, log, stop, mode="smith", need=None):
     """The tidy-up below; with the game behind other windows its info boxes may not show at all: then the
     game is brought to the front for the tidy-up only, and the window that had the front gets it back."""
-    text, done = _cleanup(io, opts, base_dir, log, stop, probe=True)
+    text, done = _cleanup(io, opts, base_dir, log, stop, probe=True, mode=mode, need=need)
     if text != NEED_FRONT:
         return text, done
     prev_fg = None
@@ -994,7 +1003,7 @@ def cleanup(io, opts, base_dir, log, stop):
         else:
             prev_fg = None
             log("게임 창을 앞으로 가져오지 못함: 정보창 없이 정리 (읽지 못한 아이템은 보관함으로)")
-        return _cleanup(io, opts, base_dir, log, stop, probe=False)
+        return _cleanup(io, opts, base_dir, log, stop, probe=False, mode=mode, need=need)
     finally:
         if prev_fg:
             try:
@@ -1003,7 +1012,7 @@ def cleanup(io, opts, base_dir, log, stop):
                 pass
 
 
-def _cleanup(io, opts, base_dir, log, stop, probe=False):
+def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None):
     """Charsi's window is open: register/replace uniques and sets in the collection tab, move
     essences and keepers to the stash, sell the rest. Items that cannot be read go to the stash
     instead of being sold. -> (text, done)"""
@@ -1022,7 +1031,13 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
     if frame is None:
         return "게임 창을 찾지 못함", False
     geo = Geo(frame)
-    if seen(geo.normalize(frame), "panel") < 0.6:
+    inv_only = mode == "inv"
+    if need is None:
+        need = {}
+    if inv_only:
+        if seen(geo.normalize(frame), "inv") < 0.7:
+            return "인벤토리가 열려 있지 않음", False
+    elif seen(geo.normalize(frame), "panel") < 0.6:
         return "대장장이 창이 열려 있지 않음", False
     keep_min = int(opts.get("keep_min", 0))
     words = [w.strip() for w in str(opts.get("keep_words", "정수,주얼,작은 부적")).split(",") if w.strip()]
@@ -1302,6 +1317,43 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False):
         log("정수 %d묶음은 인벤토리에 그대로 둠 (%d개 이상인 묶음만 보관함으로, 정수는 절대 판매 안 함)" % (plan["hold"], ESSENCE_HOLD))
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
     stash_kinds = ("essence", "keep", "leave")
+    if inv_only:
+        # sell right here (Shift+click in the bags); only registering / the stash need the smith
+        log("인벤토리 정리 계획: %s" % (", ".join("%s %d" % ({"sell": "판매", "register": "등록", "swap": "교체",
+                                                          "keep": "보관 목록", "essence": "보관함", "hold": "정수 둠",
+                                                          "leave": "그대로/보관함"}.get(k, k), v)
+                                              for k, v in plan.items()) or "없음"))
+        if plan.get("sell") and not stop.is_set():
+            def sell_here(cell, ev, d):
+                if d != "sell":
+                    return
+                n_ = norm_now()                 # last look right before selling: an essence is never sold
+                if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
+                    log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
+                    return
+                tap(cell_center(*cell), mod="shift")
+                acted(cell)
+                _park(io, geo)
+                if not filled(cell):
+                    count["sell"] += 1
+                    log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
+                else:
+                    log("%s: Shift+클릭했지만 칸이 비지 않음" % title(ev))
+
+            walk(sell_here)
+        later = {}
+
+        def check_left(cell, ev, d):
+            later[d] = later.get(d, 0) + 1
+
+        walk(check_left)
+        npc = {k: later[k] for k in ("register", "swap", "keep", "essence", "leave") if later.get(k)}
+        need["npc"] = bool(npc)
+        need["what"] = npc
+        need["sold"] = count["sell"]
+        return "인벤토리 정리: 판매 %d%s" % (count["sell"], (" - 대장장이가 필요한 것: " + ", ".join(
+            "%s %d" % ({"register": "등록", "swap": "교체", "keep": "보관 목록", "essence": "보관함",
+                        "leave": "읽지 못함/강화"}[k], v) for k, v in npc.items())) if npc else " - 대장장이 필요 없음"), True
 
     # 1) collection tab: register new ones, try a swap when this copy may be better
     forged_here = any(ev_ and (ev_.get("forged") or ev_.get("keep_name")) for ev_ in last_ev.values())
