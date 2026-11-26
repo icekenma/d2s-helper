@@ -426,7 +426,7 @@ class Picker:
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
-        self.tt_since, self.tt_clicks, self.tt_click_at = None, 0, 0.0
+        self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -793,6 +793,7 @@ class Picker:
         booked = self.state["town_tidy"]
         if self.tt_since is None or self.tt_since < booked:
             self.tt_since, self.npc_since, self.npc_seen, self.tt_clicks, self.tt_click_at = now, None, False, 0, 0.0
+            self.tt_scan = None
             self.log("[마을] 창고 정리 시작: 보관함(창고)으로 이동 - 등록·보관할 아이템 정리")
         if self.state.get("cleaned", 0) > self.tt_since:
             self.state["town_tidy"] = 0
@@ -808,17 +809,59 @@ class Picker:
             return
         h, w = frame.shape[:2]
         if self.tt_clicks < 3:
-            if now - self.tt_click_at < 6.0:
+            if now - self.tt_click_at < 5.0:
                 return                                   # walking there; its window opens on arrival
-            x = w / 2.0 + STASH_TOWN[0] * s
-            y = self.top + (h - self.top) / 2.0 + STASH_TOWN[1] * s
-            if 0.02 * w < x < 0.98 * w and self._world_click(x, y, portal_ok=True):
-                self.tt_clicks += 1
-                self.tt_click_at = now
-                self.log("[마을] 보관함 클릭 (%d번째): 화면 (%d, %d)" % (self.tt_clicks, x, y))
+            # find the chest by its name: the mouse goes over the spots around where it should be, and
+            # where '보관함' shows above the cursor, that spot is clicked (the character walks up and opens it)
+            cx, cy = w / 2.0, self.top + (h - self.top) / 2.0
+            if self.tt_scan is None:
+                first = self.tt_clicks == 0
+                ox, oy = STASH_TOWN if first else (0.0, 0.0)
+                rad = 80 if first else 150
+                pts = [(ox + dx, oy + dy) for dy in range(-rad, rad + 1, 22) for dx in range(-rad, rad + 1, 22)]
+                pts.sort(key=lambda p: (p[0] - ox) ** 2 + (p[1] - oy) ** 2)
+                self.tt_scan = [(cx + px * s, cy + py * s) for px, py in pts
+                                if 0.03 * w < cx + px * s < 0.97 * w and self.top + 45 * s < cy + py * s < h - 120 * s]
+                self.log("[마을] 보관함 찾기: 마우스를 %d곳에 올려 '보관함' 이름 확인 (%s)"
+                         % (len(self.tt_scan), "도착 자리 기준" if first else "캐릭터 주변"))
+            hit = None
+            for _ in range(6):
+                if not self.tt_scan:
+                    break
+                x, y = self.tt_scan.pop(0)
+                self.io.move(int(x), int(y))
+                time.sleep(0.09)
+                g = self.io.grab()
+                if g is None:
+                    continue
+                x0, x1 = int(max(0, x - 110 * s)), int(min(w, x + 110 * s))
+                y0, y1 = int(max(0, y - 90 * s)), int(min(h, y + 15 * s))
+                if spot.score(spot.label_mask(g[y0:y1, x0:x1], s), "보관함") >= 0.72:
+                    hit = (x, y)
+                    break
+            if hit is not None:
+                self.tt_scan = None
+                if self._world_click(hit[0], hit[1], portal_ok=True):
+                    self.tt_clicks += 1
+                    self.tt_click_at = now
+                    self.log("[마을] '보관함' 이름 확인 -> 클릭 (%d번째): 화면 (%d, %d)" % (self.tt_clicks, hit[0], hit[1]))
                 return
-            self.tt_clicks = 3
-            self.log("[마을] 보관함 자리가 화면 밖 (창이 좁음): 대장장이를 찾아 정리")
+            if self.tt_scan:
+                return                                   # more spots next step
+            self.tt_scan = None
+            if self.tt_clicks == 0:
+                # not found from here: walk toward where it should be, then look around the character
+                x, y = cx + STASH_TOWN[0] * s, cy + STASH_TOWN[1] * s
+                x = min(max(x, 0.05 * w), 0.95 * w)
+                if self._world_click(x, y, portal_ok=True):
+                    self.log("[마을] 도착 자리 주변에서 '보관함'을 못 찾음: 그쪽으로 걸어간 뒤 다시 찾음")
+                self.tt_clicks, self.tt_click_at = 1, now
+                return
+            self.tt_clicks += 1
+            self.tt_click_at = now - 3.0
+            if self.tt_clicks < 3:
+                return
+            self.log("[마을] 캐릭터 주변에서도 '보관함' 이름을 못 찾음")
         if self.tt_clicks == 3:
             self.tt_clicks = 4
             self.log("[마을] 보관함 창이 열리지 않음: 대장장이(창고)를 찾아 정리")
