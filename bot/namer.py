@@ -206,6 +206,8 @@ def step(log, limit=20):
 
 def start(log):
     """Background thread: a few pictures every 15 s."""
+    warned, told = [False], [False]
+
     def run():
         quiet_until = 0.0
         while True:
@@ -218,6 +220,14 @@ def start(log):
                 log("아이템 이름 읽기 오류: %s" % e)
                 n = -1
             if n < 0:
-                quiet_until = time.time() + 1800
-                log("아이템 이름 읽기: 윈도우 한국어 OCR을 쓸 수 없음 (설정 > 시간 및 언어 > 언어에서 한국어 '광학 문자 인식' 설치 확인)")
+                quiet_until = time.time() + 300           # tried again in 5 minutes (it may be installed now)
+                if not warned[0]:
+                    warned[0] = True
+                    log("아이템 이름 읽기: 윈도우 한국어 OCR을 쓸 수 없음 (설정 > 시간 및 언어 > 언어에서 한국어 "
+                        "'광학 문자 인식' 설치 확인, 설치하면 5분 안에 다시 시도)")
+            elif n > 0:
+                if warned[0] or not told[0]:
+                    log("아이템 이름 읽기: 윈도우 한국어 OCR로 아이템 이름 %d개 읽음" % n)
+                warned[0] = False
+                told[0] = True
     threading.Thread(target=run, daemon=True).start()
