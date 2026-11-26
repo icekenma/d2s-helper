@@ -276,7 +276,7 @@ def rare_bow_label(frame, l, s):
         return False
     R, G, B = LABEL_PAL["rare"]
     m = spot.colour_mask(frame[y0:y1, x0:x1], s, (B, G, R))
-    words = ["화살", "볼트"] + (["보우"] if sorter.PLAY.get("rare_bow", True) else [])
+    words = ["화살", "볼트", "부적"] + (["보우"] if sorter.PLAY.get("rare_bow", True) else [])   # 부적: rare charms
     return any(w in spot._words and spot.score(m, w) >= RARE_BOW_NEED for w in words)
 
 
@@ -1295,7 +1295,7 @@ class Picker:
             labs = keep_
             if skip_ and not self.g_rare_note:
                 self.g_rare_note = True
-                self.log("[3단계] 레어 이름표 %d개는 화살·볼트·활이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
+                self.log("[3단계] 레어 이름표 %d개는 화살·볼트·활·부적이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
         chests = find_chests(f, s) if self.opts.get("open_chests", False) else []
         full = 0.0
         if now - self.g_full_look >= 0.9:

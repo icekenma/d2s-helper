@@ -1404,6 +1404,16 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "leave"                      # reinforced by the player (강화): never touched
         if ev.get("kind") == "작은 부적":
             return "essence"                    # small charms (magic or rare): always to the stash
+        if ev.get("kind") in ("거대 부적", "기술 거대 부적"):
+            # grand charms (magic or rare): a skill one ('+1 활과 석궁 기술' ...) to the stash (the user's rule),
+            # one surely without a skill line sold; unsure (lines not read / '기술' half seen): kept
+            if ev.get("gc_skill"):
+                ev["kind"] = "기술 거대 부적"
+                return "essence"
+            sk = ev.get("gc_skill_score")
+            if sk is not None and sk < scorer.GC_NO_SKILL and (ev.get("gc_lines") or 0) >= 1:
+                return "sell"
+            return "essence"
         if ev["color"] == "green":
             return "sell"                       # set items: never picked up, always sold if one came in
         if ev["color"] == "yellow" and ev.get("quiver"):

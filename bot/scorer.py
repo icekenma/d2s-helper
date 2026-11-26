@@ -267,6 +267,8 @@ _keep_pics = []                              # (name, float32 picture of the nam
 KEEP_PIC_NEED = 0.76
 QUIVER_NEED = 0.75                           # '화살' / '볼트' picture on a rare's base line
 ED_NEED = 0.72                               # '피해 증가' picture on a jewel line
+GC_SKILL_NEED = 0.68                         # '기술' picture on a grand charm's magic line (+1 활과 석궁 기술 ...)
+GC_NO_SKILL = 0.5                            # under this on every line (and lines read): surely no skill
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
 KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
 
@@ -441,6 +443,13 @@ def evaluate(crop, s, keep_words=None):
             out["kind"], out["keep"] = "작은 부적", True
         elif is_charm and word("거대"):
             out["kind"], out["keep"] = "거대 부적", True
+            # a skill grand charm ('+1 활과 석궁 기술', '+1 아마존 기술' ...): '기술' on one of its magic lines
+            mag = [l for l in lines[1:] if l["color"] in ("blue", "yellow", "other")]
+            sk = max([spot.score(rows(l), SKILL_WORD) for l in mag] or [0.0]) if SKILL_WORD in spot._words else None
+            out["gc_skill_score"] = sk
+            out["gc_lines"] = len(mag)
+            if sk is not None and sk >= GC_SKILL_NEED:
+                out["gc_skill"] = True
         elif spot.has(rows(lines[0]), "주얼", 0.68):
             out["kind"], out["keep"] = "주얼", True
             # 증뎀 주얼: '+N% 피해 증가' by its picture (no OCR needed; '피해 추가' scores well below)
@@ -494,6 +503,11 @@ def evaluate(crop, s, keep_words=None):
                 m = re.search(r"(\d+)\s*%\s*피\S?\s*[증중층충]\s*가", text(l).translate(QTY_FIX))
                 if m:
                     out["ed"] = int(m.group(1))
+                    break
+        if out.get("kind") == "거대 부적" and not out.get("gc_skill"):
+            for l in lines[1:]:
+                if l["color"] in ("blue", "yellow", "other") and SKILL_WORD in text(l).replace(" ", ""):
+                    out["gc_skill"] = True
                     break
         if color not in ("gold", "green"):
             if not out["keep"] and (ends_with(name, "룬") or ends_with(name, "정수") or has_word(name, "열쇠")
