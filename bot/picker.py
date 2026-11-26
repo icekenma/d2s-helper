@@ -777,6 +777,15 @@ class Picker:
             if self.wp_tab_tries > 6:
                 self.wp_tab_tries = 0
                 self.wp_list_tab = None
+                self.wp_tab_fail = getattr(self, "wp_tab_fail", 0) + 1
+                if self.wp_tab_fail >= 2:
+                    # the list does not show that tab (more stages than its tab strip holds): the newest
+                    # stage this time rather than standing at the waypoint for good
+                    self.wp_tab_fail, self.wp_frontier = 0, True
+                    self.io.key(Key.esc)
+                    self.log("웨이포인트: 공포 영역 %d단계가 있는 탭(%d~%d)을 열지 못함 -> 이번 판은 목록 맨 위 새 단계로 "
+                             "(단계 목록 화면을 캡처해 보내 주세요)" % (stage, tab * per + 1, tab * per + per))
+                    return True
                 self.io.key(Key.esc)
                 self.log("웨이포인트: %d~%d단계 탭이 열리지 않음 (열린 탭: %s) - 목록을 닫고 다시"
                          % (tab * per + 1, tab * per + per, "모름" if lit is None else "%d~%d" % (lit * per + 1, lit * per + per)))
@@ -785,6 +794,7 @@ class Picker:
             self.log("웨이포인트: %d~%d단계 탭 열기" % (tab * per + 1, tab * per + per))
             return True
         self.wp_tab_tries = 0
+        self.wp_tab_fail = 0
         if rows[row][1] < 0.6:
             self.wp_miss += 1
             if self.wp_miss >= 2:

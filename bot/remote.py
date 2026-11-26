@@ -328,7 +328,7 @@ class Remote:
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
                         d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
-                        stage = max(0, min(99, int(d.get("stage", 0))))
+                        stage = max(0, min(999, int(d.get("stage", 0))))
                     except Exception:
                         return self._send(400, b'{"error":"stage"}', "application/json")
                     cb = getattr(remote, "set_stage", None)

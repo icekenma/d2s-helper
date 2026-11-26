@@ -377,7 +377,7 @@ class App(tk.Tk):
 
     def _set_stage(self, stage):
         """From the phone: the terror zone stage to repeat. Saved, and if running, used from the next run."""
-        stage = max(0, min(99, stage))
+        stage = max(0, min(999, stage))
         self.v_stage.set(str(stage) if stage else "")
         self.cfg["stage"] = stage
         sorter.RUN_INFO["stage"] = stage
@@ -1001,7 +1001,7 @@ class App(tk.Tk):
         if self.engine:
             return self.halt()
         try:
-            stage = max(0, min(99, int(self.v_stage.get().strip() or 0)))
+            stage = max(0, min(999, int(self.v_stage.get().strip() or 0)))
         except ValueError:
             stage = 0
         self.v_stage.set(str(stage) if stage else "")
