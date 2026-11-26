@@ -267,10 +267,22 @@ _keep_pics = []                              # (name, float32 picture of the nam
 KEEP_PIC_NEED = 0.76
 QUIVER_NEED = 0.75                           # '화살' / '볼트' picture on a rare's base line
 ED_NEED = 0.72                               # '피해 증가' picture on a jewel line
-GC_SKILL_NEED = 0.68                         # '기술' picture on a grand charm's magic line (+1 활과 석궁 기술 ...)
-GC_NO_SKILL = 0.5
+GC_SKILL_NEED = 0.6                          # '기술' picture on a magic line (+3 활과 석궁 기술 ...), best of a few
+GC_NO_SKILL = 0.5                            # sizes: the skill line ~0.72-0.80, other lines <= 0.47 (돌 마수 장갑)
+
+
+def skill_score(m):
+    """'기술' on a line mask, tried at a few sizes round the box's own (the word picture comes from bigger
+    text, and one size alone missed '+3 활과 석궁 기술' on a rare glove: 0.54-0.73)."""
+    best = 0.0
+    for k in (0.8, 0.87, 0.94, 1.0, 1.07, 1.14, 1.22):
+        mm = m if k == 1.0 else (cv2.resize(m, None, fx=k, fy=k, interpolation=cv2.INTER_LINEAR) > 0.5).astype(np.float32)
+        best = max(best, spot.score(mm, SKILL_WORD))
+    return best
+
+
 OTHER_CLASSES = ("소서리스", "원소술사", "네크로맨서", "강령술사", "팔라딘", "성기사", "바바리안", "야만용사",
-                 "드루이드", "어쌔신", "암살자")                            # under this on every line (and lines read): surely no skill
+                 "드루이드", "어쌔신", "암살자")
 STAR = {}                                    # name -> importance 1..5 (highest over the classes)
 KEEP_MIN_STAR = [1]                          # only names rated this many stars or more are kept
 
@@ -447,7 +459,7 @@ def evaluate(crop, s, keep_words=None):
             out["kind"], out["keep"] = "거대 부적", True
             # a skill grand charm ('+1 활과 석궁 기술', '+1 아마존 기술' ...): '기술' on one of its magic lines
             mag = [l for l in lines[1:] if l["color"] in ("blue", "yellow", "other")]
-            sk = max([spot.score(rows(l), SKILL_WORD) for l in mag] or [0.0]) if SKILL_WORD in spot._words else None
+            sk = max([skill_score(rows(l)) for l in mag] or [0.0]) if SKILL_WORD in spot._words else None
             out["gc_skill_score"] = sk
             out["gc_lines"] = len(mag)
             if sk is not None and sk >= GC_SKILL_NEED:
@@ -468,7 +480,7 @@ def evaluate(crop, s, keep_words=None):
         # a skill line on a rare ('+N 아마존 기술', '+N 활과 쇠뇌 기술', '+N 지속 효과·마법 기술' ...):
         # the magic lines after the name and the base
         props = [l for l in lines[2:] if l["color"] in ("blue", "other")]
-        rs = max([spot.score(rows(l), SKILL_WORD) for l in props] or [0.0])
+        rs = max([skill_score(rows(l)) for l in props] or [0.0])
         out["rare_skill_score"] = rs
         if rs >= GC_SKILL_NEED:
             out["rare_skill"] = True
