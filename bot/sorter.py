@@ -1253,7 +1253,11 @@ def sale_why(ev):
             bits.append("다른 직업 기술")
         elif ev.get("rare_ocr") == "none":
             bits.append("기술 옵션 없음 (글자 인식 확인)")
-        elif not ev.get("rare_skill"):
+        elif ev.get("rare_ocr") == "skill" and not ev.get("rare_ocr_bow"):
+            bits.append("활 기술이 아님 (글자 인식 확인)")
+        elif (ev.get("rare_skill_score") or 0.0) >= RARE_SKILL_MAYBE and not ev.get("rare_skill_bow"):
+            bits.append("활 기술이 아님 ('기술' 앞 단어 %s)" % "·".join(str(x) for x in (ev.get("rare_skill_words") or [])))
+        else:
             bits.append("기술 옵션 없음 ('기술' 그림 %.2f)" % (ev.get("rare_skill_score") or 0.0))
         return ", ".join(bits)
     if c == "blue":
@@ -1413,11 +1417,13 @@ def rare_has_skill(ev):
         return False
     sc = ev.get("rare_skill_score") or 0.0
     ocr = ev.get("rare_ocr")
+    # only bow skills count (the user's rule): '활과 석궁 기술' or all Amazon skills ('아마존 기술');
+    # javelin / spear, passive / magic and other classes' skills are of no use to a bow Amazon
     if ocr == "skill":
-        return True
+        return bool(ev.get("rare_ocr_bow"))
     if ocr == "none":
-        return sc >= RARE_SKILL_SURE
-    return sc >= RARE_SKILL_MAYBE
+        return sc >= RARE_SKILL_SURE and bool(ev.get("rare_skill_bow"))
+    return sc >= RARE_SKILL_MAYBE and bool(ev.get("rare_skill_bow"))
 
 
 def tidy_in_inventory(io, opts, base_dir, log, stop=None):
@@ -1889,8 +1895,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if ev.get("req"):
             bits.append("필요 레벨 %d" % ev["req"])
         if ev.get("color") == "yellow" and ev.get("rare_skill_score") is not None:
-            bits.append("기술 그림 %.2f%s" % (ev["rare_skill_score"], {"skill": " · 글자: 기술 있음", "none": " · 글자: 기술 없음"}
-                                          .get(ev.get("rare_ocr"), "")))
+            bits.append("기술 그림 %.2f%s%s" % (ev["rare_skill_score"],
+                                            (" (앞 단어 %s%s)" % ("·".join(str(x) for x in ev["rare_skill_words"]),
+                                                                ": 활 기술" if ev.get("rare_skill_bow") else ": 활 기술 아님"))
+                                            if ev.get("rare_skill_words") else "",
+                                            {"skill": " · 글자: 기술 있음", "none": " · 글자: 기술 없음"}.get(ev.get("rare_ocr"), "")))
         if ev.get("ed"):
             bits.append("증뎀")
         if ev.get("uncollected"):
@@ -1989,6 +1998,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                 has, other = scorer.skill_text(lines)
                 ev_["rare_ocr_weapon"] = any(WEAPON_RE.search(t) for t in lines[1:6])
                 ev_["rare_ocr"] = "skill" if has else "none"
+                ev_["rare_ocr_bow"] = scorer.bow_text(lines)
                 ev_["rare_ocr_other"] = other
                 if has:
                     ev_["rare_ocr_line"] = next((t for t in lines[2:] if scorer.SKILL_RE.search(t)), "")

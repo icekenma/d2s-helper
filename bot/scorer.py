@@ -281,6 +281,57 @@ def skill_score(m):
     return best
 
 
+def skill_words(m):
+    """Where '기술' stands on a line mask and the words in front of it, counted in letters (the game font's
+    Korean letters all have one width): '+3 활과 석궁 기술' -> [2, 2], '+2 투창과 창 기술' -> [3, 1],
+    '+2 지속 효과 및 마법 기술' -> [2, 2, 1, 2], '+2 아마존 기술' -> [3]. The '+N' in front is left out.
+    -> (score, [letters per word]) or (0.0, None)"""
+    best = None
+    for k in (0.8, 0.87, 0.94, 1.0, 1.07, 1.14, 1.22):
+        mm = m if k == 1.0 else (cv2.resize(m, None, fx=k, fy=k, interpolation=cv2.INTER_LINEAR) > 0.5).astype(np.float32)
+        for t in spot._words.get(SKILL_WORD, ()):
+            th, tw = t.shape
+            if mm.shape[0] < th or mm.shape[1] < tw:
+                mm = cv2.copyMakeBorder(mm, 0, max(0, th - mm.shape[0]), 0, max(0, tw - mm.shape[1]),
+                                        cv2.BORDER_CONSTANT, value=0)
+            if mm.std() == 0:
+                continue
+            _, v, _, loc = cv2.minMaxLoc(cv2.matchTemplate(mm, t, cv2.TM_CCOEFF_NORMED))
+            if np.isfinite(v) and (best is None or v > best[0]):
+                best = (float(v), loc, tw, th, mm)
+    if best is None:
+        return 0.0, None
+    v, (x, y), tw, th, mm = best
+    g = tw / 2.0                                # one letter (the word picture is two letters wide)
+    cols = mm[max(0, y - 2):y + th + 2, :max(0, x - 1)].sum(axis=0) > 0
+    words, i, n = [], 0, len(cols)
+    while i < n:
+        if cols[i]:
+            j = i
+            while j < n and cols[j]:
+                j += 1
+            if words and i - words[-1][1] < 0.45 * g:
+                words[-1][1] = j                # a gap between letters, not a space
+            else:
+                words.append([i, j])
+            i = j
+        else:
+            i += 1
+    counts = [max(1, int(round((b - a) / g))) for a, b in words]
+    if counts and (words[0][1] - words[0][0]) < 1.8 * g:
+        counts = counts[1:]                     # '+3', '+12': the number in front
+    return v, counts
+
+
+BOW_WORDS = ([2, 2], [3])   # '활과 석궁 기술' (bow and crossbow skills), '아마존 기술' (all Amazon skills)
+
+
+def bow_skill_text(t):
+    """OCR text of a skill line -> True for the bow tab or all Amazon skills."""
+    t = t.replace(" ", "")
+    return ("활" in t or "석궁" in t or re.search(r"\+\d+아마존기[술슬]", t) is not None) and "투창" not in t
+
+
 SKILL_RE = re.compile(r"기\s*[술슬숱솔]|전\s*[용웅]")    # '기술' / '(… 전용)' as the Windows OCR reads it
 
 
@@ -291,6 +342,11 @@ def skill_text(lines):
         return False, False
     other = all(any(c in t for c in OTHER_CLASSES) and "아마존" not in t for t in sk)
     return True, other
+
+
+def bow_text(lines):
+    """Windows OCR lines -> a bow-skill line (활과 석궁 / all Amazon skills) among them."""
+    return any(bow_skill_text(t) for t in lines[2:] if SKILL_RE.search(t))
 
 
 OTHER_CLASSES = ("소서리스", "원소술사", "네크로맨서", "강령술사", "팔라딘", "성기사", "바바리안", "야만용사",
@@ -492,8 +548,14 @@ def evaluate(crop, s, keep_words=None):
         # a skill line on a rare ('+N 아마존 기술', '+N 활과 쇠뇌 기술', '+N 지속 효과·마법 기술' ...):
         # the magic lines after the name and the base
         props = [l for l in lines[2:] if l["color"] in ("blue", "other")]
-        rs = max([skill_score(rows(l)) for l in props] or [0.0])
+        rs, words = 0.0, None
+        for l in props:
+            v_, w_ = skill_words(rows(l))
+            if v_ > rs:
+                rs, words = v_, w_
         out["rare_skill_score"] = rs
+        out["rare_skill_words"] = words
+        out["rare_skill_bow"] = words in BOW_WORDS        # only bow skills matter (the user's rule)
         if rs >= GC_SKILL_NEED:
             out["rare_skill"] = True
     if color == "yellow":
