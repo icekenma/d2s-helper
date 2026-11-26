@@ -648,6 +648,10 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
    <span class="ft"><b>패스트 모드</b><span id="fastSub">보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함</span></span>
    <span class="sw" aria-hidden="true"><i></i></span>
   </button>
+  <button type="button" class="fast climb" id="climbBtn" role="switch" aria-checked="false">
+   <span class="ft"><b>자동 등반</b><span id="climbSub">매 판 새로 열린 더 높은 단계에 도전 · 보스를 잡으면 줍기 없이 바로 마을</span></span>
+   <span class="sw" aria-hidden="true"><i></i></span>
+  </button>
   <div class="fx off" id="fx" role="group" aria-label="패스트 모드 확장">
    <button type="button" data-k="count" aria-pressed="false">정수 세기<small>인벤토리로 확인</small></button>
    <button type="button" data-k="jewel" aria-pressed="false">주얼 줍기<small>증뎀 표시</small></button>
@@ -712,7 +716,7 @@ function hms(s){s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floo
 function status(){
  fetch("/api/status").then(function(r){return r.json()}).then(function(s){
   if(s.version){if(pageVer&&s.version!==pageVer){location.reload();return}pageVer=s.version}
-  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);fxFrom(s);playFrom(s);alertFrom(s);limFrom(s);
+  running=s.running;$("runs").textContent=s.runs;stageFrom(s);fastFrom(s);climbFrom(s);fxFrom(s);playFrom(s);alertFrom(s);limFrom(s);
   CD.limit=s.stage_limit||240;CD.end=(s.stage_left==null)?null:Date.now()+s.stage_left*1000;CD.run=running;cdDraw();
   $("st").className="st"+(running?" on":"");
   $("stb").textContent=running?"자동 진행 중 "+hms(s.now-s.started):"멈춰 있음";
@@ -726,6 +730,12 @@ var fastOn=false,fastBusy=0;
 function fastDraw(){$("fastBtn").setAttribute("aria-checked",String(fastOn));if($("fx"))$("fx").className="fx"+(fastOn?"":" off");
  $("fastSub").textContent=fastOn?"켜짐: 보스를 잡거나 "+mss(CD.limit||160)+"이 지나면 바로 다음 판 · 아래 확장만 함":"보스를 잡으면 바로 다음 판 · 아이템 줍기·정리 안 함"}
 function fastFrom(s){if(typeof s.fast!=="boolean"||Date.now()<fastBusy)return;fastOn=s.fast;fastDraw()}
+/* 자동 등반: the newest open stage every run, out to town as soon as the boss dies */
+var climbOn=false,climbBusy=0,climbInfo={};
+function climbDraw(){$("climbBtn").setAttribute("aria-checked",String(climbOn));
+ var i=climbInfo;$("climbSub").textContent=climbOn?("켜짐: 보스 처치 "+(i.climb_ok||0)+"번"+(i.climb_fails?" · 연속 실패 "+i.climb_fails+"/"+(i.climb_max||3):"")+
+  " · "+(i.climb_max||3)+"판 연속 실패하면 멈추고 정한 단계 사냥으로"):"매 판 새로 열린 더 높은 단계에 도전 · 보스를 잡으면 줍기 없이 바로 마을"}
+function climbFrom(s){if(typeof s.climb!=="boolean")return;climbInfo=s;if(Date.now()<climbBusy)return;climbOn=s.climb;climbDraw()}
 $("tidyNow").onclick=function(){
  if(!running){$("tidySub").textContent="도우미가 멈춰 있음: 시작한 뒤에 누르세요";return}
  if(!confirm("지금 사냥을 멈추고 마을 창고에서 정리할까요?\n정리가 끝나면 사냥을 이어갑니다."))return;
@@ -780,6 +790,9 @@ var fx={count:false,jewel:false,unique:false},fxBusy=0;
 function fxDraw(){$("fx").className="fx"+(fastOn?"":" off");Array.prototype.forEach.call($("fx").children,function(b){b.setAttribute("aria-pressed",String(!!fx[b.dataset.k]))})}
 function fxFrom(s){if(!s.fast_ext||Date.now()<fxBusy)return;fx=s.fast_ext;fxDraw()}
 Array.prototype.forEach.call($("fx").children,function(b){b.onclick=function(){var k=b.dataset.k,d={};fx[k]=!fx[k];d[k]=fx[k];fxBusy=Date.now()+4000;fxDraw();post("/api/fastext",d)}});
+$("climbBtn").onclick=function(){
+ if(!climbOn&&!confirm("자동 등반을 켤까요?\n다음 판부터 새로 열린 더 높은 단계에 차례로 도전하고, 보스를 잡으면 아이템을 줍지 않고 바로 마을로 갑니다.\n"+(climbInfo.climb_max||3)+"판 연속 보스를 못 잡으면 멈추고 정한 단계 사냥으로 돌아갑니다."))return;
+ climbOn=!climbOn;climbBusy=Date.now()+4000;climbDraw();post("/api/climb",{on:climbOn}).catch(function(){})};
 $("fastBtn").onclick=function(){fastOn=!fastOn;fastBusy=Date.now()+4000;fastDraw();post("/api/fast",{on:fastOn}).catch(function(){})};
 /* stage to repeat: edited here, sent with 적용; the PC's value shows when nothing is being edited */
 var stageNow=null,stageDirty=false;
@@ -1186,7 +1199,8 @@ function drawEff(lim){
  rows.sort(function(a,b){return (b.stage||1e9)-(a.stage||1e9)});
  var ok=rows.filter(function(o){return o.n>=3&&o.ph!=null}),best=ok.length?ok.reduce(function(a,o){return o.ph>a.ph?o:a}):null;
  var cur=stageNow||((runs[0]||{}).stage)||0,co=g[cur],tip="",cls="";
- if(!cur){tip="단계를 비워 두어 <b>새로 열린 단계를 계속 올라가는 중</b>입니다. 이때는 실제 몇 단계인지 기록되지 않아 단계별로 비교할 수 없습니다. 원하는 단계(50의 배수 권장)를 정하면 단계별 효율이 쌓입니다."}
+ if(climbOn){cls="ok";tip="<b>자동 등반 중</b>: 매 판 새로 열린 더 높은 단계에 도전합니다 (보스 처치 "+(climbInfo.climb_ok||0)+"번). 등반 판은 '새 단계'로 묶입니다. 등반이 끝나면 정한 단계(50의 배수 권장)에서 정수를 모으세요."}
+ else if(!cur){tip="단계를 비워 두어 <b>새로 열린 단계를 계속 올라가는 중</b>입니다. 이때는 실제 몇 단계인지 기록되지 않아 단계별로 비교할 수 없습니다. 원하는 단계(50의 배수 권장)를 정하면 단계별 효율이 쌓입니다."}
  else{
   var e=essAt(cur),b50=Math.floor(cur/50)*50,nx=b50+50;
   if(co&&co.n>=3&&co.kr<0.8){cls="bad";

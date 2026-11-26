@@ -36,6 +36,7 @@ ENGINE_CFG = {"window_title": TITLE, "interval": 0.5, "dry_run": False, "client_
               "stage_end": True, "town_start": True, "drop_after": 0,
               "sort": {"actions": {c: "keep" for c in sorter.COLORS}, "stash_tab": "개인", "save_tips": False,
                        "min_score": 60, "keep_min": 0, "keep_words": "정수", "swap_better": False}}
+CLIMB_FAILS = 3          # 자동 등반: this many runs in a row without the boss -> stop climbing
 PICK_OPTS = {"set": False, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
              "town_start": True, "town_stage": 0, "collect_after": True, "mouse_move": True, "over_limit": 100}
 PLAY = [("skip_act", "막 건너뛰기", "패스트 모드에서 정수를 1개 주는 1·2·5막이면 바로 나가 다시 뽑음"),
@@ -191,6 +192,14 @@ class App(tk.Tk):
         ttk.Checkbutton(ff, text="패스트 모드", variable=self.v_fast,
                         command=lambda: self._set_fast(self.v_fast.get(), "PC")).pack(side="left")
         tk.Label(ff, text="아이템을 줍지 않고 보스를 잡으면 바로 Esc로 마을 -> 다음 판 (정수는 저절로 들어옴)",
+                 bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
+        cf = tk.Frame(self, bg=BG)
+        cf.pack(fill="x", padx=20, pady=(0, 10))
+        self.v_climb = tk.BooleanVar(value=bool(self.cfg.get("climb", False)))
+        ttk.Checkbutton(cf, text="자동 등반", variable=self.v_climb,
+                        command=lambda: self._set_climb(self.v_climb.get(), "PC")).pack(side="left")
+        tk.Label(cf, text="매 판 새로 열린 더 높은 단계에 도전, 보스를 잡으면 줍기 없이 바로 마을 -> 다음 단계 "
+                          "(%d판 연속 실패하면 멈추고 정한 단계 사냥으로)" % CLIMB_FAILS,
                  bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
         xf = tk.Frame(self, bg=BG)
         xf.pack(fill="x", padx=20, pady=(0, 10))
@@ -382,6 +391,7 @@ class App(tk.Tk):
             if self.picker is not None and getattr(self.picker, "p", None) is not None:
                 self.picker.p.opts["town_stage"] = stage
                 self.picker.p.wp_frontier = False
+        self._climb_apply()
         self._say("휴대폰에서 단계 변경: %s" % ("공포 영역 %d단계 반복 (다음 판부터)" % stage if stage
                                            else "단계 미지정 (목록 맨 위 새 단계)"))
         self._share()
@@ -552,6 +562,7 @@ class App(tk.Tk):
         pk = getattr(self, "picker", None)
         if pk is not None and getattr(pk, "p", None) is not None:
             pk.p.opts.update(p)
+        self._climb_apply()
 
     def _set_play(self, changes, who="휴대폰"):
         """사냥 설정: act skip, chests, town stash tidy, rare bows kept, sets sold."""
@@ -594,6 +605,7 @@ class App(tk.Tk):
             except Exception:
                 pass
         self._apply_fast_ext()
+        self._climb_apply()
         names = dict(FAST_EXT)
         for k, v in changes.items():
             if k in names:
@@ -616,12 +628,105 @@ class App(tk.Tk):
             self.picker.p.opts["fast_mode"] = on
         if self.engine is not None:
             self.engine.state["fast"] = on
+        self._climb_apply()
         e = self._fast_ext()
         extra = [n for k, n in FAST_EXT if e[k]]
         self._say("%s에서 패스트 모드 %s" % (who, "켬: 보스를 잡으면 바로 다음 판, %s 지나면 무조건 다음 판 (%s)" % (
             limit_text(self._limit()), "확장: " + ", ".join(extra) if extra else "아이템 줍기·정리 안 함") if on
                                             else "끔: 녹음 경로·줍기·대장장이 정리를 다시 함"))
         self._share()
+
+    # ---------- 자동 등반 ----------
+    def _climb_apply(self):
+        """자동 등반 on: always the newest open stage (the top '공포 영역 N' row of the waypoint, one higher
+        than the last cleared), the boss dies -> straight to town with nothing picked up (패스트 모드 exit, no
+        act skip, no extras), the normal time limit. Off: the saved stage / 패스트 모드 settings again."""
+        on = bool(self.cfg.get("climb", False))
+        if not on and not getattr(self, "climb_was", False):
+            return
+        self.climb_was = on
+        stage = 0 if on else int(self.cfg.get("stage", 0) or 0)
+        fast = bool(self.cfg.get("fast_mode", False))
+        ext = {k: False for k, _ in FAST_EXT} if on else self._fast_ext()
+        play = self._play()
+        sorter.RUN_INFO["stage"] = stage
+        if self.engine is not None:
+            try:
+                self.engine.state.update(target=stage, deaths=0, fast=False if on else fast,
+                                         fast_pick=ext["jewel"] or ext["unique"], climb=on)
+                self.engine.cfg["always_town"] = stage > 0
+            except Exception:
+                pass
+        pk = getattr(self, "picker", None)
+        if pk is not None:
+            # the picker thread's opts dict is the Picker's own (also before its thread has made the Picker)
+            pk.opts.update(town_stage=stage, fast_mode=True if on else fast, fast_count=ext["count"],
+                           fast_jewel=ext["jewel"], fast_unique=ext["unique"],
+                           skip_act=False if on else play["skip_act"])
+            if getattr(pk, "p", None) is not None:
+                pk.p.wp_frontier = False
+
+    def _set_climb(self, on, who="휴대폰"):
+        on = bool(on)
+        self.cfg["climb"] = on
+        save_cfg(self.cfg)
+        try:
+            self.v_climb.set(on)
+        except Exception:
+            pass
+        self.climb_since = time.time()
+        self.climb_ok = 0
+        self.climb_was = True
+        self._climb_apply()
+        st = int(self.cfg.get("stage", 0) or 0)
+        self._say("%s에서 자동 등반 %s" % (who, (
+            "켬: 다음 판부터 웨이포인트의 새로 열린 단계(직전보다 높은 단계)에 도전, 보스를 잡으면 줍기 없이 바로 마을 -> "
+            "더 높은 단계. %d판 연속 보스를 못 잡으면 멈춤" % CLIMB_FAILS) if on else
+            "끔: %s" % ("공포 영역 %d단계 반복" % st if st else "목록 맨 위 새 단계")))
+        self._share()
+
+    def _climb_check(self):
+        """While climbing: count the bosses killed since it began; CLIMB_FAILS runs in a row without the boss
+        (time limit, death) = the limit for now -> climbing off, back to the saved stage, a push to the phone."""
+        if not self.cfg.get("climb") or self.engine is None:
+            return
+        now = time.time()
+        if now - getattr(self, "climb_at", 0) < 5:
+            return
+        self.climb_at = now
+        since = getattr(self, "climb_since", None) or self.started_at or now
+        try:
+            from bot import runlog
+            runs = runlog.build(40)
+        except Exception:
+            return
+        ok, fails, streak = 0, 0, True
+        for r in runs:                                   # newest first
+            if r["start"] < since:
+                break
+            if r.get("live") or r.get("skip"):
+                continue
+            if r.get("boss"):
+                ok += 1
+                streak = False
+            elif streak and r.get("secs", 0) >= 20:
+                fails += 1
+        if ok > getattr(self, "climb_ok", 0):
+            self.climb_ok = ok
+            self._say("자동 등반: 보스 처치 %d번째 -> 더 높은 단계로" % ok)
+        self.climb_fails = fails
+        if fails < CLIMB_FAILS:
+            return
+        st = int(self.cfg.get("stage", 0) or 0)
+        self._say("자동 등반 멈춤: %d판 연속 보스를 못 잡음 (등반 중 보스 처치 %d번) -> %s"
+                  % (fails, ok, "공포 영역 %d단계 반복" % st if st else "목록 맨 위 새 단계"))
+        try:
+            if self.watch.conf.get("on"):
+                self.watch._post("D2S: 자동 등반 끝", "%d판 연속 보스를 못 잡아 등반을 멈췄습니다 (보스 처치 %d번). %s 사냥을 이어갑니다."
+                                 % (fails, ok, "공포 영역 %d단계로" % st if st else "새 단계로"), "default", "mountain")
+        except Exception:
+            pass
+        self._set_climb(False, "도우미")
 
     def _gear_scan(self):
         """Info boxes of all worn / bag / stash items into one ZIP (the smith's window must be open)."""
@@ -799,8 +904,9 @@ class App(tk.Tk):
 
     def _limit(self):
         e = self._fast_ext()
-        return stage_limit(dict(self._limits_state(), fast=bool(self.cfg.get("fast_mode", False)),
-                                fast_pick=e["jewel"] or e["unique"]))
+        climb = bool(self.cfg.get("climb", False))
+        return stage_limit(dict(self._limits_state(), fast=bool(self.cfg.get("fast_mode", False)) and not climb,
+                                fast_pick=(e["jewel"] or e["unique"]) and not climb))
 
     def _stage_left(self):
         """Seconds left in this stage before the forced move to the next run, or None outside a stage."""
@@ -825,7 +931,9 @@ class App(tk.Tk):
                        "started": self.started_at or 0, "window_title": TITLE, "rules": [],
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
                        "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
-                       "limits": self._limits_state(), "play": self._play()}
+                       "limits": self._limits_state(), "play": self._play(),
+                       "climb": bool(self.cfg.get("climb", False)), "climb_ok": getattr(self, "climb_ok", 0),
+                       "climb_fails": getattr(self, "climb_fails", 0), "climb_max": CLIMB_FAILS}
 
     def _remote(self):
         if not self.cfg.get("remote_pin"):
@@ -839,6 +947,7 @@ class App(tk.Tk):
             self.remote.set_stage = lambda n: self.q.put(("stage", n))
             self.remote.set_keep_star = lambda n: self.q.put(("keep_star", n))
             self.remote.set_fast = lambda on: self.q.put(("fast", on))
+            self.remote.set_climb = lambda on: self.q.put(("climb", on))
             self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
             self.remote.set_play = lambda d: self.q.put(("play", d))
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
@@ -925,6 +1034,10 @@ class App(tk.Tk):
         self.engine.start()
         self.picker = PickerThread(TITLE, popts, emit, self.io_lock, state)
         self.picker.start()
+        if self.cfg.get("climb"):
+            self.climb_since, self.climb_ok, self.climb_was = time.time(), 0, True
+            self._climb_apply()
+            self._say("자동 등반 켜짐: 새로 열린 더 높은 단계에 차례로 도전 (보스 처치 -> 바로 마을)")
         self.b_run.configure(text="중지 (F8)", style="Stop.TButton")
 
     def halt(self):
@@ -968,6 +1081,8 @@ class App(tk.Tk):
                     self._set_stage(int(p or 0))
                 elif kind == "fast":
                     self._set_fast(p)
+                elif kind == "climb":
+                    self._set_climb(p)
                 elif kind == "fast_ext":
                     self._set_fast_ext(p)
                 elif kind == "play":
@@ -1017,6 +1132,10 @@ class App(tk.Tk):
             pass
         try:
             self.watch.items()
+        except Exception:
+            pass
+        try:
+            self._climb_check()
         except Exception:
             pass
         if self.engine is not None and self.engine.state.pop("halt_now", False):

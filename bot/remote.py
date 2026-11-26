@@ -325,6 +325,16 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/climb" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        on = bool(json.loads(self.rfile.read(min(n, 1024)) or b"{}").get("on"))
+                    except Exception:
+                        return self._send(400, b'{"error":"climb"}', "application/json")
+                    cb = getattr(remote, "set_climb", None)
+                    if cb:
+                        cb(on)
+                    return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
                 if u.path == "/api/tidy_now" and method == "POST":
                     cb = getattr(remote, "tidy_now", None)
                     if cb:
