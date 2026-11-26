@@ -1713,8 +1713,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             # and a keeper sold for that is lost for good (a +3 bow-skill glove went that way)
             cells = footprint.get(cell, []) if cell is not None else []
             wdt_, hgt_ = len({c for c, r in cells}), len({r for c, r in cells})
-            ev["kind"] = "레어 기술 " + ("목걸이·반지" if (wdt_, hgt_) == (1, 1) else "장갑·서클릿" if (wdt_, hgt_) == (2, 2)
-                                       else "장신구")
+            if ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55 or (wdt_ == 2 and hgt_ in (3, 4)):
+                ev["kind"] = "레어 기술 활 (필요 레벨 %s)" % (ev.get("req") if ev.get("req") is not None else "?")
+            else:
+                ev["kind"] = "레어 기술 " + ("목걸이·반지" if (wdt_, hgt_) == (1, 1) else "장갑·서클릿" if (wdt_, hgt_) == (2, 2)
+                                           else "장신구")
             return "keep"
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
