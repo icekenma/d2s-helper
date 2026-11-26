@@ -274,11 +274,11 @@ def set_min_star(n):
 
 
 def _set_keep(out, nm):
-    """A keep-list name was recognised: kept only when rated at least KEEP_MIN_STAR stars."""
+    """A keep-list name was recognised: always kept (the user's rule: every item on the list goes to the
+    stash, whatever its stars)."""
     st = STAR.get(nm, 5)
     out["star"], out["seen_name"] = st, nm
-    if st >= KEEP_MIN_STAR[0]:
-        out["keep_name"], out["kind"] = nm, nm
+    out["keep_name"], out["kind"] = nm, nm
 
 
 def load_keep(base):

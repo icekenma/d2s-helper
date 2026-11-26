@@ -1300,10 +1300,10 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return "essence" if q is not None and q >= ESSENCE_HOLD else "hold"
         if not ev:
             return "leave"                      # no info box could be read: never sell blind
+        if ev.get("keep_name"):
+            return "keep"                       # on the keep list (보관 목록): always to the stash, no matter what
         if ev.get("forged"):
             return "leave"                      # reinforced by the player (강화): never touched
-        if ev.get("keep_name"):
-            return "keep"                       # one of the best items (바람살, 신념, ...): always to the stash
         if ev["color"] == "green":
             return "sell"                       # set items: always sold (the user's rule)
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm"):
