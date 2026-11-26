@@ -971,6 +971,9 @@ def _tip_key(tip):
         return None
 
 
+RUN_ID = [0.0]      # set by the collector at each new run: an essence count is read once per run
+_SEEN = {}          # (col, row) -> (cell picture, info, info-box picture, run): read in an earlier tidy-up,
+                    # not hovered again while the same picture stays in that cell
 HELD = "held_items.json"          # info-box keys of the items left in the bags at the last tidy-up
 
 
@@ -1222,7 +1225,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
 
     def acted(cell):
         """An item was clicked: the cells taken to be part of it are looked at again if still filled."""
+        _SEEN.pop(cell, None)
         for x in footprint.pop(cell, [cell]):
+            _SEEN.pop(x, None)
             if x in assumed and assumed[x][0] == cell:
                 del assumed[x]
 
@@ -1241,7 +1246,14 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return None
         nb = geo.normalize(base)
         fp = _fingerprint(nb, *cell)
-        if fp in known and not fresh and not ess:      # an essence is always read itself (its count)
+        seen_ = _SEEN.get(cell)
+        if (not fresh and seen_ is not None and seen_[0] == fp and seen_[1] is not None
+                and (not ess or seen_[3] == RUN_ID[0])):
+            # read in an earlier tidy-up and still the same picture in this cell: no second look
+            # (an essence stack: once per run, its count only changes when the boss dies)
+            ev, tip_of[cell] = seen_[1], seen_[2]
+            known[fp], tip_by_fp[fp] = ev, seen_[2]
+        elif fp in known and not fresh and not ess:      # an essence is always read itself (its count)
             ev = known[fp]
             tip_of[cell] = tip_by_fp.get(fp)
         else:
@@ -1271,6 +1283,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             known[fp] = ev
             tip_by_fp[fp] = tip
             tip_of[cell] = tip
+            if ev is not None:
+                _SEEN[cell] = (fp, ev, tip, RUN_ID[0])
         # the rest of this item: a block of the same background colour (at most 2 wide, 4 tall)
         inv = read_inventory(nb)
         c, r = cell
@@ -1334,7 +1348,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                 return "register" if tries.get(ev["name"] or ("?", cell), 0) < 1 else "keep"
             if "uncollected" in ev:
                 # no '수집품에 없음' (purple) under the name: already in the collection -> a spare, sold
-                # (the user's rule). Before the sale the info box is read a second time (sell_here).
+                # (the user's rule)
                 sc, old = ev["score"], registry.get(ev["name"]) if ev["name"] else None
                 if swap_better and ev["name"] and sc is not None and tries.get(ev["name"], 0) < 3 and (old is None or sc > old):
                     return "swap"
@@ -1437,6 +1451,10 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     park_ref[0] = park_patch()                  # what the parked cursor sees with nothing held
     n0 = norm_now()
     inv0 = read_inventory(n0) if n0 is not None else None
+    if inv0 is not None:
+        for c_, r_ in list(_SEEN):
+            if not inv0[r_][c_]:
+                _SEEN.pop((c_, r_), None)       # that item is gone: whatever comes there is read anew
     if inv0 is not None and not any(v for row in inv0 for v in row):
         if probe and not view_only:
             record_essences({}, set())            # no 불타는 정수 in the bags this run
@@ -1464,10 +1482,36 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return "%s -> %s" % (", ".join(bits), {"sell": "판매", "register": "등록", "swap": "교체", "keep": "보관",
                                                 "essence": "보관함", "hold": "정수 둠", "leave": "그대로 둠"}.get(d, d))
 
+    held_before = _held_load() if (inv_only or view_only) else set()
+
+    def is_new(cell):
+        k = _tip_key(tip_of.get(cell)) if tip_of.get(cell) is not None else None
+        return k is not None and not _key_in(k, held_before)
+
+    def sell_here(cell, ev, d):
+        """Shift+click in the bags (no shop window): sold at once."""
+        if d != "sell" or stop.is_set():
+            return
+        n_ = norm_now()                         # last look right before selling: an essence is never sold
+        if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
+            log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
+            return
+        tap(cell_center(*cell), mod="shift")
+        acted(cell)
+        _park(io, geo)
+        if not filled(cell):
+            count["sell"] += 1
+            log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
+            record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True, got=is_new(cell))
+        else:
+            log("%s: Shift+클릭했지만 칸이 비지 않음" % title(ev))
+
     def survey(cell, ev, d):
         plan[d] = plan.get(d, 0) + 1
         if cell in footprint and d not in ("hold",):
             log("  칸 %d,%d %s: %s" % (cell[0] + 1, cell[1] + 1, title(ev) if ev else "?", why(ev, d)))
+        if d == "sell" and (inv_only or view_only):
+            sell_here(cell, ev, d)              # decided at the first look: sold right away
         if d not in ("hold", "essence"):
             return
         nm = (ev.get("name") or ev.get("raw") or "") if ev else ""
@@ -1505,40 +1549,13 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     gold_green = inv0 is not None and any(v in ("tan", "green") for row in inv0 for v in row)
     stash_kinds = ("essence", "keep", "leave")
     if inv_only:
-        held_before = _held_load()
-
-        def is_new(cell):
-            k = _tip_key(tip_of.get(cell)) if tip_of.get(cell) is not None else None
-            return k is not None and not _key_in(k, held_before)
-        # sell right here (Shift+click in the bags); only registering / the stash need the smith
+        # sold at the first look already (survey); registering / the stash need the smith or the stash
         log("인벤토리 정리 계획: %s" % (", ".join("%s %d" % ({"sell": "판매", "register": "등록", "swap": "교체",
                                                           "keep": "보관", "essence": "보관함", "hold": "정수 둠",
                                                           "leave": "그대로/보관함"}.get(k, k), v)
                                               for k, v in plan.items()) or "없음"))
-        if plan.get("sell") and not stop.is_set():
-            def sell_here(cell, ev, d):
-                if d != "sell":
-                    return
-                if ev and ev.get("color") in ("gold", "green") and not (ev["color"] == "green" and PLAY.get("sell_sets", True)):
-                    ev2 = inspect(cell, fresh=True)    # a unique: look once more for '수집품에 없음' before selling
-                    if not ev2 or ev2.get("uncollected") or decide(ev2, cell) != "sell":
-                        log("%s: 다시 보니 판매 대상이 아님 (%s)" % (title(ev), why(ev2, decide(ev2, cell) if ev2 else "leave")))
-                        return
-                n_ = norm_now()                 # last look right before selling: an essence is never sold
-                if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
-                    log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
-                    return
-                tap(cell_center(*cell), mod="shift")
-                acted(cell)
-                _park(io, geo)
-                if not filled(cell):
-                    count["sell"] += 1
-                    log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
-                    record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True, got=is_new(cell))
-                else:
-                    log("%s: Shift+클릭했지만 칸이 비지 않음" % title(ev))
-
-            walk(sell_here)
+        if plan.get("sell") and count["sell"] < plan["sell"] and not stop.is_set():
+            walk(sell_here)                     # (anything missed at the first look; nothing is hovered again)
         later = {}
         held_now = set()
 
@@ -1689,12 +1706,6 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             log("찰시 판매 화면을 확인하지 못해 판매를 건너뜀")
         else:
             def sell(cell, ev, d):
-                if d == "sell" and ev and ev.get("color") in ("gold", "green") \
-                        and not (ev["color"] == "green" and PLAY.get("sell_sets", True)):
-                    ev2 = inspect(cell, fresh=True)    # a unique: look once more for '수집품에 없음' before selling
-                    if not ev2 or ev2.get("uncollected") or decide(ev2, cell) != "sell":
-                        log("%s: 다시 보니 판매 대상이 아님" % title(ev))
-                        return
                 if d == "sell":
                     n_ = norm_now()             # last look right before selling: an essence is never sold
                     if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):

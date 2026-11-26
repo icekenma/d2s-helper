@@ -471,6 +471,7 @@ class Picker:
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tt_direct, self.tt_best = 0, 0.0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
+        self.bag_res, self.bag_at = None, 0.0
         self.view_seen = float(self.state.get("inv_view", 0) or 0)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -607,6 +608,8 @@ class Picker:
         return self.labels
 
     def _new_run(self):
+        sorter.RUN_ID[0] = time.time()            # essence stacks are read once in each run
+        self.bag_res, self.bag_at = None, 0.0     # the bags' last check in this run (and what it found)
         self.over_since, self.stage_start = None, None
         self.portal_first, self.gate_at = 0.0, 0.0
         self.target, self.idle_since, self.ignore, self.history = None, None, [], []
@@ -1366,6 +1369,7 @@ class Picker:
             base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
             try:
                 res = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
+                self.bag_res, self.bag_at = res, time.time()
             except Exception as e:
                 self.log("[4단계] 인벤토리 정리 오류: %s" % e)
                 res = ("인벤토리 정리 오류", True, {"npc": True, "what": {"오류": 1}})
@@ -1390,7 +1394,14 @@ class Picker:
             # taken to the stash in town after the run, only once the bags are getting full
             self.release()
             self.frame = None
-            res = self._tidy_bags()
+            if (self.bag_res is not None and self.over_since is not None and self.bag_at > self.over_since
+                    and self.bag_at > self.last_gain and not self.w_resume
+                    and self.bag_at > self.state.get("cleaned", 0) and self.bag_at > self.state.get("inv_full", 0)):
+                # the bags were checked after the boss and nothing came in since: not opened again
+                res = self.bag_res
+                self.log("[4단계] 보스 처치 뒤 이미 인벤토리를 확인했고 그 뒤 주운 것 없음: 다시 열지 않음")
+            else:
+                res = self._tidy_bags()
             if res is None:
                 self.log("[4단계] 인벤토리를 열지 못함: 정리 없이 귀환")
                 self.w_stage, self.w_resume = "exit", False
@@ -1550,8 +1561,9 @@ class Picker:
             # something besides essences in the bags: the window is open anyway, so what the rules sell
             # (set items, spare rares ...) is sold right here; the essences are counted on the way
             try:
-                text, _, _ = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
-                self.log("패스트 모드: " + text)
+                res = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
+                self.bag_res, self.bag_at = res, time.time()
+                self.log("패스트 모드: " + res[0])
             except Exception as e:
                 self.log("패스트 모드: 인벤토리 정리 오류: %s" % e)
         elif norm is not None:
