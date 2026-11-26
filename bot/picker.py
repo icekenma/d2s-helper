@@ -668,6 +668,54 @@ class Picker:
         self.io.tap(int(x), int(y))
         return True
 
+    def _hover_name(self, x, y):
+        """Rest the cursor on (x, y): what name shows under it? -> "stash" ('보관함'), "other" (a townsman or
+        one of the player's other characters - a click on those switches the character!), or None."""
+        f0 = self.io.grab()
+        if f0 is None:
+            return None
+        h, w = f0.shape[:2]
+        s = (h - self.top) / 600.0
+        self.io.move(int(x), int(y))
+        time.sleep(0.11)
+        g = self.io.grab()
+        if g is None or g.shape[:2] != (h, w):
+            return None
+        x0, x1 = int(max(0, x - 110 * s)), int(min(w, x + 110 * s))
+        y0, y1 = int(max(0, y - 90 * s)), int(min(h, y + 15 * s))
+        if spot.label_score(g[y0:y1, x0:x1], s, "보관함") >= 0.70:
+            return "stash"
+        def near(boxes):
+            return [b for b in boxes if b[0] - 20 * s <= x <= b[2] + 20 * s and y - 110 * s <= b[3] <= y + 20 * s]
+        old = near(find_labels(f0, s))
+        new = [b for b in near(find_labels(g, s))
+               if not any(abs(b[0] - o[0]) < 6 * s and abs(b[1] - o[1]) < 6 * s for o in old)]
+        return "other" if new else None
+
+    def _town_click(self, x, y, want=None, portal_ok=True):
+        """A click in town that never lands on a person: the player's other characters stand round the
+        stash, and a click on one plays that character from then on (a night at the waypoint with a
+        low-level character that had not cleared the stage). The spot is hovered first; when a name comes
+        up that is not the one wanted, nearby spots are tried instead. -> True when a click was sent."""
+        f = self.io.grab()
+        if f is None:
+            return False
+        h, w = f.shape[:2]
+        s = (h - self.top) / 600.0
+        for i, (ox, oy) in enumerate(((0, 0), (0, -45), (45, -20), (-45, -20), (0, 40), (70, 20), (-70, 20))):
+            tx = min(max(x + ox * s, 0.04 * w), 0.96 * w)
+            ty = min(max(y + oy * s, self.top + 45 * s), h - 125 * s)
+            name = self._hover_name(tx, ty)
+            if name == "other" or (want == "stash" and name not in ("stash", None)):
+                if i == 0:
+                    self.log("[마을] 누를 자리에 사람(다른 캐릭터·주민)이 있어 피해서 누름 (캐릭터가 바뀌지 않게)")
+                continue
+            if want == "stash" and i > 0 and name != "stash":
+                return False                          # the chest itself is covered: not clicked blind
+            return self._world_click(tx, ty, portal_ok=portal_ok)
+        self.log("[마을] 누를 자리 주변이 모두 사람에 가려 이번에는 누르지 않음")
+        return False
+
     # ---- screen reading ---------------------------------------------------------------------
     def _labels(self, frame, s, now):
         """Readable name labels on screen, refreshed about twice a second: [(kind, cx, bottom)]."""
@@ -975,7 +1023,7 @@ class Picker:
             pad = find_wp_flames(frame, s, self.top)
             if pad is not None:
                 self.explore_at = 0.0
-                if now - self.wp_time > 3 and self._world_click(pad[0], pad[1]):
+                if now - self.wp_time > 3 and self._town_click(pad[0], pad[1], portal_ok=False):
                     self.wp_time = now
                     self.log("마을: 웨이포인트(파란 불꽃) 클릭")
                 return
@@ -994,7 +1042,7 @@ class Picker:
                 tx = min(max(cx + dx * k, 0.06 * w), 0.94 * w)
                 ty = min(max(cy + dy * k, self.top + 60 * s), h - 135 * s)
                 self.explore_at = now
-                if self._world_click(tx, ty):
+                if self._town_click(tx, ty, portal_ok=False):
                     self.wp_walks += 1
                     self.log("마을: 웨이포인트가 화면 밖 (%s 기준 %+d, %+d): 그쪽으로 걸어감 (%d번째)"
                              % (how, dx / s, dy / s, self.wp_walks))
@@ -1087,7 +1135,7 @@ class Picker:
                     k = min(1.0, 0.30 * w / max(1.0, (dx * dx + dy * dy) ** 0.5))
                     tx = min(max(cx + dx * k, 0.06 * w), 0.94 * w)
                     ty = min(max(cy + dy * k, self.top + 60 * s), h - 135 * s)
-                    self._world_click(tx, ty, portal_ok=True)
+                    self._town_click(tx, ty)
                     self.tt_walks += 1
                     self.tt_click_at, self.tt_wait = now, 2.2
                     self.log("[마을] 보관함이 화면 밖 (%s 기준 %+d, %+d): 그쪽으로 걸어감 (%d번째)"
@@ -1137,7 +1185,7 @@ class Picker:
                 # waypoint: click it straight away (a little higher the second time: its lid)
                 self.tt_direct += 1
                 tx, ty = gx, gy - (12 * s if self.tt_direct == 2 else 0)
-                if self._world_click(tx, ty, portal_ok=True):
+                if self._town_click(tx, ty, want="stash"):
                     self.tt_clicks += 1
                     self.tt_click_at, self.tt_wait = now, 5.0
                     self.log("[마을] '보관함' 이름을 못 읽음 (가장 비슷한 정도 %.2f): %s 기준 계산한 자리 (%d, %d)를 바로 클릭"
@@ -1151,7 +1199,7 @@ class Picker:
             (gx, gy), how = self._stash_guess(frame, s, cx, cy)
             gx = min(max(gx, 0.06 * w), 0.94 * w)
             gy = min(max(gy, self.top + 60 * s), h - 135 * s)
-            self._world_click(cx + (gx - cx) * 0.6, cy + (gy - cy) * 0.6, portal_ok=True)
+            self._town_click(cx + (gx - cx) * 0.6, cy + (gy - cy) * 0.6)
             self.tt_click_at, self.tt_wait = now, 2.2
             self.log("[마을] '보관함' 이름을 못 찾음: %s 기준 자리 쪽으로 다가가서 더 넓게 찾음" % how)
             return

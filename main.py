@@ -960,12 +960,12 @@ class App(tk.Tk):
             return
         self.stuck_sent = now
         mins = int((now - t0) // 60)
-        self._say("경고: 마을에서 %d분째 사냥터로 출발하지 못함 (웨이포인트·창고 확인)" % mins)
+        self._say("경고: 마을에서 %d분째 사냥터로 출발하지 못함 (캐릭터가 바뀌지 않았는지 확인)" % mins)
         try:
             if self.watch.conf.get("on"):
                 self.watch._post("D2S 경고: 마을에서 %d분째 멈춤" % mins,
-                                 "도우미가 %d분 동안 사냥터에 들어가지 못했습니다. 휴대폰 '화면 보기'로 게임 화면을 확인하고, "
-                                 "로그 파일(10분)을 받아 보내 주세요." % mins)
+                                 "도우미가 %d분 동안 사냥터에 들어가지 못했습니다. 마을에서 다른 캐릭터로 바뀌지 않았는지 "
+                                 "휴대폰 '화면 보기'로 확인하세요 (바뀌었으면 원래 캐릭터를 눌러 되돌리기)." % mins)
         except Exception:
             pass
 
