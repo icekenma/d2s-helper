@@ -227,6 +227,31 @@ summary::-webkit-details-marker{display:none}
  box-shadow:0 0 6px var(--ember);animation:rise 3.6s linear infinite}
 .hero.idle .embers{display:none}
 @keyframes rise{0%{transform:translate(0,0);opacity:0}15%{opacity:.9}100%{transform:translate(var(--dx,8px),-150px);opacity:0}}
+/* boss slain: the card turns to blood and gold until the run ends */
+.hero.slain{background:radial-gradient(130% 150% at 50% -10%,rgba(196,66,58,.5),transparent 60%),
+ radial-gradient(90% 120% at 12% 100%,rgba(240,201,111,.24),transparent 62%),linear-gradient(160deg,#3b1411,#1a0d0a);
+ box-shadow:inset 0 0 0 1.5px rgba(240,201,111,.7),0 0 26px rgba(196,66,58,.32);animation:slainGlow 2.6s ease-in-out infinite}
+@keyframes slainGlow{50%{box-shadow:inset 0 0 0 1.5px rgba(240,201,111,1),0 0 42px rgba(196,66,58,.55)}}
+.hero.slain .ring .tr{stroke:rgba(122,26,22,.55)}
+.hero.slain .ring .pr{stroke:var(--gold2)}
+.hero.slain .ring::before{content:"";position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
+ box-shadow:0 0 22px rgba(240,201,111,.45),inset 0 0 18px rgba(240,201,111,.3)}
+.hero.slain .ring .bt{fill:var(--gold2);stroke:#3b1411}
+.hero.slain .clk{color:#fff1cf;text-shadow:0 0 16px rgba(240,201,111,.65)}
+.hero.slain .of{color:#d9b98a}
+.hero.slain .hd{color:var(--gold2);letter-spacing:-.01em;text-shadow:0 0 18px rgba(196,66,58,.6)}
+.hero.slain .say{color:#e3c9a3}
+.hero.slain .pill.ok{color:#1d0c08;background:linear-gradient(#ffe2a0,var(--gold2));box-shadow:0 0 14px rgba(240,201,111,.45)}
+.hero.slain .embers i{background:#ffe08a;box-shadow:0 0 8px #f0c96f;animation-duration:2.1s}
+.hero .slainmark{position:absolute;right:-6px;bottom:-14px;font-size:64px;font-weight:900;letter-spacing:.04em;line-height:1;
+ color:rgba(240,201,111,.07);pointer-events:none;display:none;font-family:Georgia,"Times New Roman",serif}
+.hero.slain .slainmark{display:block}
+.hero .flash{position:absolute;inset:0;pointer-events:none;opacity:0;
+ background:radial-gradient(circle at 80px 50%,rgba(255,240,205,.9),rgba(196,66,58,.45) 34%,transparent 72%)}
+.hero.slain-in .flash{animation:slainFlash 1.3s ease-out}
+.hero.slain-in .ring{animation:slainPop .7s cubic-bezier(.2,1.6,.4,1)}
+@keyframes slainFlash{0%{opacity:1}100%{opacity:0}}
+@keyframes slainPop{0%{transform:scale(.86)}100%{transform:scale(1)}}
 
 .rfresh{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ash);margin:-4px 2px -4px}
 .rfresh i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
@@ -407,7 +432,7 @@ summary::-webkit-details-marker{display:none}
 .rinone{color:var(--ash);font-size:13px;padding:4px 0 8px}
 .edb{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:800;color:#1b0e05;background:var(--ember2);vertical-align:1px}
 .rempty{padding:22px 16px;color:var(--ash);font-size:13.5px;line-height:1.55;border-radius:14px;box-shadow:inset 0 0 0 1px var(--edge)}
-@media (prefers-reduced-motion:reduce){.embers{display:none}.forge .big .flame,.bars button.lv,.rc.new,.burst{animation:none}.burst{display:none}
+@media (prefers-reduced-motion:reduce){.hero.slain,.hero.slain-in .flash,.hero.slain-in .ring{animation:none}.embers{display:none}.forge .big .flame,.bars button.lv,.rc.new,.burst{animation:none}.burst{display:none}
  .meter i,.ring .pr{transition:none}}
 /* fast mode extras (control tab) */
 .fx{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:-4px}
@@ -588,6 +613,7 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
  <div class="awarn" id="aWarn" role="alert" hidden></div>
  <div class="hero idle" id="rHero">
   <div class="embers" id="rEmb" aria-hidden="true"></div>
+  <div class="flash" aria-hidden="true"></div><div class="slainmark" aria-hidden="true">SLAIN</div>
   <div class="ring"><svg viewBox="0 0 128 128" aria-hidden="true"><circle class="tr" cx="64" cy="64" r="54"/>
    <circle class="pr" id="rRing" cx="64" cy="64" r="54" stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
    <circle class="bt" id="rBoss" cx="118" cy="64" r="5" style="display:none"/></svg>
@@ -1214,6 +1240,7 @@ function loadRuns(){
   if(seenN===null||top>seenN)seenN=runs.filter(function(r){return !r.live}).reduce(function(a,r){return Math.max(a,r.n)},0);
   drawRuns(true);freshDraw()}).catch(function(){runsBusy=false;runsErr=true;freshDraw()});
 }
+var slainRun=null,slainUntil=0;     /* the run whose boss kill was shown (flash once per run) */
 function embers(){var e=$("rEmb");if(e.childNodes.length)return;var h="";
  for(var i=0;i<9;i++)h+='<i style="left:'+(8+i*10.5)+'%;--dx:'+(i%2?-1:1)*(6+i*2)+'px;animation-delay:'+(i*0.41).toFixed(2)+'s;animation-duration:'+(3+(i%4)*0.5)+'s"></i>';
  e.innerHTML=h}
@@ -1293,13 +1320,17 @@ function drawRuns(full){
  /* hero: the run under way */
  var hero=$("rHero"),C=339.3;
  if(cur){
-  var el=now-(cur._skew||0)-cur.start,p=Math.min(1,el/lim);
-  hero.className="hero"+(el>lim*0.8?" late":"");embers();
-  $("rRing").setAttribute("stroke-dashoffset",(C*(1-p)).toFixed(1));
+  var el=now-(cur._skew||0)-cur.start,p=Math.min(1,el/lim),slain=cur.boss_secs!=null;
+  var fresh=slain&&slainRun!==cur.start;
+  if(slain)slainRun=cur.start;
+  hero.className="hero"+(slain?" slain":el>lim*0.8?" late":"")+(fresh||Date.now()<slainUntil?" slain-in":"");
+  if(fresh){slainUntil=Date.now()+1300;setTimeout(function(){hero.classList.remove("slain-in")},1350)}
+  embers();
+  $("rRing").setAttribute("stroke-dashoffset",slain?"0":(C*(1-p)).toFixed(1));   /* slain: the ring closes */
   $("rClk").textContent=mss(el);$("rOf").textContent="제한 "+mss(lim);
   var bt=$("rBoss");
   if(cur.boss_secs!=null){var a=2*Math.PI*Math.min(1,cur.boss_secs/lim);bt.setAttribute("cx",(64+54*Math.cos(a)).toFixed(1));bt.setAttribute("cy",(64+54*Math.sin(a)).toFixed(1));bt.style.display=""}else bt.style.display="none";
-  $("rHd").textContent=(cur.no||cur.n)+"판째 사냥 중";
+  $("rHd").textContent=slain?"보스 처치! · "+(cur.no||cur.n)+"판째":(cur.no||cur.n)+"판째 사냥 중";
   var ln=[];
   if(cur.act)ln.push('<span class="pill'+(cur.act===3||cur.act===4?" hot":"")+'">'+cur.act+"막</span>");
   ln.push('<span class="pill dim">공포 '+(cur.stage||"-")+"단계</span>");
