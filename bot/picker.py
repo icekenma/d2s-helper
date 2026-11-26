@@ -492,6 +492,7 @@ class Picker:
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
         self.tt_walks, self.tt_miss, self.tt_wait = 0, 0, 5.0
         self.tt_direct, self.tt_best = 0, 0.0
+        self.wp_walks = 0
         self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
         self.bag_res, self.bag_at = None, 0.0
         self.view_seen = float(self.state.get("inv_view", 0) or 0)
@@ -816,7 +817,9 @@ class Picker:
             return
         if self.town_since is None:
             self.town_since = now
+            self.wp_walks = 0
         if self.state.get("town_tidy"):
+            self.wp_walks = 0
             self._town_tidy(frame, s, now)
             return
         if now - self.town_label >= 0.8:
@@ -831,9 +834,27 @@ class Picker:
                     self.wp_time = now
                     self.log("마을: 웨이포인트(파란 불꽃) 클릭")
                 return
-        # no waypoint in view: walk around the town a little to bring it on screen (the minimap is not
-        # needed for that: the walk goes by the arrow keys)
-        if now - self.town_since < 5 or now - self.wp_time < 4:
+        # no waypoint in view: the town is always laid out the same, so walk toward where it must be,
+        # worked out from the campfire (or from the stash, right after a tidy-up there)
+        if now - self.town_since < 1.5 or now - self.wp_time < 4:
+            return
+        if now - self.explore_at >= 1.4 and self.wp_walks < 8:
+            g = self._wp_guess(frame, s, now)
+            if g is not None:
+                (gx, gy), how = g
+                h, w = frame.shape[:2]
+                cx, cy = w / 2.0, self.top + (h - self.top) / 2.0
+                dx, dy = gx - cx, gy - cy
+                k = min(1.0, 0.32 * w / max(1.0, (dx * dx + dy * dy) ** 0.5))
+                tx = min(max(cx + dx * k, 0.06 * w), 0.94 * w)
+                ty = min(max(cy + dy * k, self.top + 60 * s), h - 135 * s)
+                self.explore_at = now
+                if self._world_click(tx, ty):
+                    self.wp_walks += 1
+                    self.log("마을: 웨이포인트가 화면 밖 (%s 기준 %+d, %+d): 그쪽으로 걸어감 (%d번째)"
+                             % (how, dx / s, dy / s, self.wp_walks))
+                return
+        if now - self.town_since < 5:
             return
         if now - self.town_since > 25 and now - self.town_fix > 30:
             # long without a waypoint in view: a window or the big map may be covering the town
@@ -860,6 +881,23 @@ class Picker:
                 self._hold(direction(dx, dy))
         elif not self.mouse and now - self.explore_at >= 1.0:
             self.release()
+
+    def _wp_guess(self, frame, s, now):
+        """Where the waypoint pad must be (may be off screen): from the campfire, or - right after a
+        tidy-up at the stash, standing at the chest - from the stash. -> ((x, y), what from) or None."""
+        try:
+            fire = find_campfire(frame, s, self.top)
+        except Exception:
+            fire = None
+        if fire is not None:
+            return (fire[0] + (STASH_FROM_FIRE[0] - STASH_FROM_WP[0]) * s,
+                    fire[1] + (STASH_FROM_FIRE[1] - STASH_FROM_WP[1]) * s), "모닥불"
+        if now - float(self.state.get("cleaned", 0) or 0) < 90 and self.town_since is not None \
+                and self.state.get("cleaned", 0) > self.town_since - 120:
+            h, w = frame.shape[:2]
+            cx, cy = w / 2.0, self.top + (h - self.top) / 2.0
+            return (cx - STASH_FROM_WP[0] * s, cy - (STASH_FROM_WP[1] - 30) * s), "보관함"
+        return None
 
     def _town_tidy(self, frame, s, now):
         """In town, before the waypoint: the stash chest (next to where the character arrives) -> register /
