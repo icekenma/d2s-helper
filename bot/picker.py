@@ -1168,6 +1168,12 @@ class Picker:
         if self.state.get("ess_check") and not self.state.get("town_tidy"):
             self.state["town_tidy"] = now                # '정수 개수 확인': the stash chest first
             self.log("[정수 확인] 마을 도착: 보관함에서 정수 개수를 셈")
+        if self.state.get("town_tidy") and self.opts.get("nofarm") and not self.state.get("ess_check") \
+                and float(self.state.get("tidy_now", 0) or 0) < float(self.state["town_tidy"]) - 1:
+            # 패스트 & 노파밍: the town stash is not used (essences stay in the bags, even past 90);
+            # only the phone's '인벤토리 즉시 정리' / '정수 개수 확인' still go there
+            self.state["town_tidy"] = 0
+            self.log("[마을] 패스트 & 노파밍: 마을 창고 정리 예약 취소 (창고 안 씀, 정수는 인벤토리에 둠)")
         if self.state.get("town_tidy"):
             self.wp_walks = 0
             self._town_tidy(frame, s, now)

@@ -39,7 +39,7 @@ ENGINE_CFG = {"window_title": TITLE, "interval": 0.5, "dry_run": False, "client_
 CLIMB_FAILS = 3          # 자동 등반: this many runs in a row without the boss -> stop climbing
 PICK_OPTS = {"set": False, "unique": True, "jewel": True, "stage_end": True, "auto_clean": True,
              "town_start": True, "town_stage": 0, "collect_after": True, "mouse_move": True, "over_limit": 100}
-PLAY = [("nofarm", "패스트 & 노파밍", "보스 처치 3초 뒤 줍기·정리 없이 바로 다음 판을 무한 반복 (1·2·5막 건너뛰기 포함)"),
+PLAY = [("nofarm", "패스트 & 노파밍", "보스 처치 3초 뒤 줍기·정리 없이 바로 다음 판을 무한 반복 (1·2·5막 건너뛰기 포함, 마을 창고 안 씀: 정수는 인벤토리에 둠)"),
         ("skip_act", "막 건너뛰기", "패스트 모드에서 정수를 1개 주는 1·2·5막이면 바로 나가 다시 뽑음"),
         ("open_chests", "상자 열기", "보스 처치 뒤 모인 상자도 열어 나온 아이템까지 주움"),
         ("town_tidy", "마을 창고 정리", "등록·보관할 아이템으로 인벤토리가 차면 판이 끝난 뒤 마을 보관함에서 정리"),
