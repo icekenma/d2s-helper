@@ -357,6 +357,13 @@ def evaluate(crop, s, keep_words=None):
     lines = [l for l in lines if l["color"] != "none" and l["words"] > 0]
     while lines and lines[0]["color"] == "dim":
         lines = lines[1:]
+    # the crop sometimes takes in a bit of the window above the box (slot numbers, frame): white bits
+    # before a coloured name line are not the name
+    for i in range(1, min(3, len(lines))):
+        if lines[i]["color"] in ("gold", "green", "yellow", "orange", "blue") and all(
+                l["color"] in ("white", "dim", "other") for l in lines[:i]):
+            lines = lines[i:]
+            break
     if not lines:
         return None
     color = lines[0]["color"]
