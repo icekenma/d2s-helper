@@ -1387,7 +1387,8 @@ def sell_cells(io, cells, base_dir, log):
     return sold
 
 
-RARE_SKILL_MAYBE = 0.5     # '기술' picture this good on a rare's line and no OCR to settle it: kept, not sold
+RARE_SKILL_MAYBE = 0.65    # '기술' picture this good and no OCR to settle it: kept (no-skill rares read up to
+                           # 0.50 in the log, a +3 bow-skill glove 0.72-0.80)
 RARE_SKILL_SURE = 0.8      # ... and this good: kept even when the OCR found no '기술' (it may have misread it)
 
 
@@ -1414,7 +1415,7 @@ def rare_has_skill(ev):
         return True
     if ocr == "none":
         return sc >= RARE_SKILL_SURE
-    return bool(ev.get("rare_skill")) or sc >= RARE_SKILL_MAYBE
+    return sc >= RARE_SKILL_MAYBE
 
 
 def tidy_in_inventory(io, opts, base_dir, log, stop=None):
@@ -1931,7 +1932,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return ((d == "sell" or (d == "keep" and str(ev.get("kind") or "").startswith("레어 기술")))
                 and ev and ev.get("color") == "yellow" and ev.get("rare_ocr") is None
                 and PLAY.get("rare_skill", True) and cell in footprint and tip_of.get(cell) is not None
-                and os.name == "nt" and namer._now_ok[0] is not False)
+                and namer.ocr_maybe())
 
     def survey(cell, ev, d):
         plan[d] = plan.get(d, 0) + 1
@@ -1961,7 +1962,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         t0 = time.time()
         got = namer.ocr_now([tip_of.get(q_[0]) for q_ in rare_q])
         if got is None:
-            log("레어 %d개: 윈도우 글자 인식을 못 써서 '기술' 그림으로만 판단 (애매하면 보관)" % len(rare_q))
+            log("레어 %d개: 윈도우 한국어 글자 인식이 없어 '기술' 그림으로만 판단 (%.2f 이상만 보관) - "
+                "도우미 폴더의 install_ocr.bat을 한 번 실행하면 정확해짐" % (len(rare_q), RARE_SKILL_MAYBE))
             for _c, ev_, _d in rare_q:
                 ev_["rare_ocr"] = "na"
         else:
@@ -2553,9 +2555,12 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             return False
     # "게임을 저장하고 나갈까요?": its lower button
     cx, cy = geo.raw(*CONFIRM_EXIT)
-    tries = [("click", None)]
+    tries = []
     if has_keys:
-        tries += [("keys", ["down", "enter"]), ("keys", ["tab", "enter"] if keys.get("tab") else ["enter"])]
+        tries += [("keys", ["down", "enter"])]   # (this one leaves every time; the click first never did)
+    tries += [("click", None)]
+    if has_keys:
+        tries += [("keys", ["tab", "enter"] if keys.get("tab") else ["enter"])]
     for how, seq in tries:
         if how == "click":
             io.move(cx, cy)

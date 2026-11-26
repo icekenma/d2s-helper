@@ -148,11 +148,21 @@ def _prep_arr(img, dst):
 
 
 _now_ok = [None]          # Windows OCR answered (True) / is missing here (False) / not tried yet (None)
+_now_no = [0.0]           # when it was found missing (tried again 5 minutes later)
+
+
+def ocr_maybe():
+    """True when the Windows OCR is worth a try now (not found missing in the last 5 minutes)."""
+    if _now_ok[0] is False and time.time() - _now_no[0] > 300:
+        _now_ok[0] = None
+    return os.name == "nt" and _now_ok[0] is not False
 
 
 def ocr_now(images, timeout=25):
     """Read several info boxes right now with the Windows OCR, in one go (one PowerShell start, ~2-4 s).
     -> list of line lists (one per image, [] when unread), or None when the OCR cannot run on this PC."""
+    if _now_ok[0] is False and time.time() - _now_no[0] > 300:
+        _now_ok[0] = None                     # (Korean OCR may have been installed since)
     if os.name != "nt" or _now_ok[0] is False or not images:
         return None
     work = paths.p("ocr_now")
@@ -179,7 +189,7 @@ def ocr_now(images, timeout=25):
     except Exception:
         return None
     if raw == "NOKO":
-        _now_ok[0] = False
+        _now_ok[0], _now_no[0] = False, time.time()
         return None
     try:
         got = json.loads(raw) if raw else {}
@@ -289,8 +299,8 @@ def start(log):
                 quiet_until = time.time() + 300           # tried again in 5 minutes (it may be installed now)
                 if not warned[0]:
                     warned[0] = True
-                    log("아이템 이름 읽기: 윈도우 한국어 OCR을 쓸 수 없음 (설정 > 시간 및 언어 > 언어에서 한국어 "
-                        "'광학 문자 인식' 설치 확인, 설치하면 5분 안에 다시 시도)")
+                    log("아이템 이름 읽기: 윈도우 한국어 OCR을 쓸 수 없음 (도우미 폴더의 install_ocr.bat을 한 번 실행: "
+                        "관리자 확인 1번, 설치하면 5분 안에 다시 시도)")
             elif n > 0:
                 if warned[0] or not told[0]:
                     log("아이템 이름 읽기: 윈도우 한국어 OCR로 아이템 이름 %d개 읽음" % n)

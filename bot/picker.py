@@ -224,6 +224,7 @@ GATHER_HARD = 150.0         # ... and never longer than this in all
 GATHER_GONE = 0.8           # s with no label left to try before picking up is called done
 PICK_FAIL = 1.8             # s for a clicked label to go (the items lie round the character)
 PICK_TRIES = 3              # failed clicks on one spot before it is left
+FULL_LINGER = 6.0           # s the game keeps '인벤토리가 가득 찼습니다' up after the bags were tidied
 RARE_BOW_NEED = 0.6         # a rare's ground label must read '보우' this well to be picked up
 
 
@@ -1023,6 +1024,7 @@ class Picker:
             self.state["town_tidy"] = 0
             self.tt_since = None
             self.release()
+            self.town_since = now                        # (the 45 s 'stuck in town' watch starts again here)
             self.log("[마을] 창고 정리 끝 (%.0f초): 웨이포인트로" % (now - booked))
             return
         if now - self.tt_since > 90:
@@ -1665,7 +1667,8 @@ class Picker:
             self.log("[%s단계] %s (빈 칸 %s)" % ("3" if self.w_resume else "4", text, "?" if free is None else free))
             if self.w_resume:
                 self.w_resume = False
-                self.g_full_ok = self.g_full_at = time.time()   # this full notice is dealt with
+                # this full notice is dealt with; it stays on screen a few seconds more: not a new one
+                self.g_full_ok = self.g_full_at = time.time() + FULL_LINGER
                 if free is not None and free >= RESUME_FREE:
                     self.w_stage = None
                     self.g_done, self.g_empty, self.g_goal, self.g_look, self.g_gone = False, 0, None, 0.0, None
