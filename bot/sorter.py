@@ -448,11 +448,31 @@ def died(norm):
     return int(((r >= 80) & (r <= 140) & (g < 48) & (b < 48) & (r > 2.4 * np.maximum(g, 1))).sum()) >= 200
 
 
+_full2 = [None]
+
+
 def inventory_full(norm, base_dir):
-    """How strongly the screen shows the grey notice '(C: 공간 확보)'."""
+    """How strongly the screen shows the notice that the bags are full: the newer one at the bottom right
+    ('인벤토리가 가득 찼습니다 (G: 공간 확보)', light grey letters over any background) or the older
+    '(C: 공간 확보)' in the middle."""
     if _full[0] is None:
         _full[0] = _gray(_asset(base_dir, "full.png"))
-    return _match(_gray(norm[120:300, 150:700]), _full[0])
+    old = _match(_gray(norm[120:300, 150:700]), _full[0])
+    if _full2[0] is None:
+        try:
+            t = _asset(base_dir, "full2.png")
+            _full2[0] = ((t.max(axis=2) if t.ndim == 3 else t) > 0).astype(np.float32)
+        except Exception:
+            _full2[0] = False
+    new = 0.0
+    if _full2[0] is not False:
+        v = norm[400:520, 360:800].astype(np.int16)
+        mn, mx = v.min(axis=2), v.max(axis=2)
+        r = ((mn > 115) & (mx - mn < 45)).astype(np.float32)
+        if r.std() > 0 and r.shape[0] >= _full2[0].shape[0] and r.shape[1] >= _full2[0].shape[1]:
+            x = cv2.minMaxLoc(cv2.matchTemplate(r, _full2[0], cv2.TM_CCOEFF_NORMED))[1]
+            new = float(x) if np.isfinite(x) else 0.0
+    return max(old, new)
 
 
 def cell_color(norm, col, row):

@@ -425,6 +425,7 @@ class Picker:
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last, self.inv_other = None, 0.0, 0.0, 0, None, 0
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
+        self.g_full_at = 0.0
         self.tt_since, self.tt_clicks, self.tt_click_at = None, 0, 0.0
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
@@ -587,6 +588,7 @@ class Picker:
         self.w_stage, self.w_t0, self.w_ref, self.w_rounds, self.w_last = None, 0.0, 0.0, 0, None
         self.w_resume = False
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
+        self.g_full_at = 0.0
         self.count = 0
         self.exit_at, self.exit_tries = 0.0, 0
         self.ess_t0, self.ess_done, self.ess_seen = None, False, False
@@ -1050,6 +1052,16 @@ class Picker:
             f = frame
         labs = find_item_labels(f, s, kinds)
         chests = find_chests(f, s) if self.opts.get("open_chests", True) else []
+        try:
+            full = sorter.inventory_full(sorter.Geo(f).normalize(f),
+                                         os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
+        except Exception:
+            full = 0.0
+        if full >= 0.6 and now - self.g_full_at > 8:
+            self.g_full_at = now
+            self.state["inv_full"] = now                 # '인벤토리가 가득 찼습니다' on screen: tidy up at once
+            self.log("[3단계] 화면에 '인벤토리가 가득 찼습니다' 문구 (%.2f): 바로 정리" % full)
+            self.g_goal = None                           # that pick-up failed for lack of room
         waited = now - self.g_t0
         if not self.g_ready:
             # wait: the portal, and the labels must stop moving (same count three looks running)
