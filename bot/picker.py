@@ -443,6 +443,7 @@ class Picker:
         self.gave_up = False
         self.last_click = 0.0
         self.wp_time, self.wp_list_tab, self.wp_main_tab, self.wp_miss = 0.0, None, None, 0
+        self.wp_term_tab = 3        # the waypoint tab the terror zone rows were last seen on (I~V; IV at first)
         self.wp_frontier = False
         self.town_label, self.town_since, self.explore_i, self.explore_at = 0.0, None, 0, 0.0
         self.moved_from, self.moved_at = None, 0.0
@@ -714,6 +715,9 @@ class Picker:
             order = sorted(range(len(rows)), key=lambda k: -rows[k][0])
             best = order[0]
             done = [best] if rows[best][0] >= 0.55 and rows[best][0] - rows[order[1]][0] >= 0.2 else []
+            lit_main = sorter.wp_lit_tab(geo.normalize(frame))
+            if done and lit_main is not None:
+                self.wp_term_tab = lit_main             # remember the tab: it is opened first next time
             if stage <= 0 or self.wp_frontier:
                 # the newest open stage: the first '공포 영역' row above '완료한 단계 다시 하기'
                 stop_at = done[0] if done else len(rows)
@@ -721,23 +725,34 @@ class Picker:
                 if fr:
                     self.wp_frontier = False
                     self.wp_miss = 0
+                    if lit_main is not None:
+                        self.wp_term_tab = lit_main
                     self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1 + sorter.WP_PITCH * fr[0]))
                     self.log("웨이포인트: 새로 열린 공포 영역(%d번째 줄) 시작" % (fr[0] + 1))
                     return True
-                if stage <= 0:
+                if stage <= 0 and done:
+                    # the terror tab is open but the newest stage's row was not read: look again
                     self.wp_miss += 1
                     if self.wp_miss % 5 == 1:
                         self.log("웨이포인트: '공포 영역' 줄을 찾지 못함 (일치 %.2f) - 다시 확인"
                                  % max(r[1] for r in rows))
                     return True
+                # (no terror zone rows on this tab at all: the waypoint opened on another act's tab.
+                #  Fall through to the tab search below - before, 자동 등반 / 새 단계 stood here for good)
             if done:
                 self.wp_miss = 0
                 self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1 + sorter.WP_PITCH * done[0]))
                 self.log("웨이포인트: '완료한 단계 다시 하기' 열기")
                 return True
-            # this tab lists ordinary areas: look through the other tabs for the terror zone entries
+            # this tab lists ordinary areas: look through the other tabs for the terror zone entries,
+            # the tab they were last seen on first
             self.wp_miss += 1
-            self.wp_main_tab = 1 if self.wp_main_tab is None else (self.wp_main_tab + 1) % 5
+            if self.wp_term_tab is not None and self.wp_main_tab != self.wp_term_tab and lit_main != self.wp_term_tab \
+                    and self.wp_miss <= 2:
+                self.wp_main_tab = self.wp_term_tab
+            else:
+                self.wp_main_tab = ((lit_main if lit_main is not None else 0) + 1) % 5 if self.wp_main_tab is None \
+                    else (self.wp_main_tab + 1) % 5
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * self.wp_main_tab, sorter.WP_TAB_Y))
             self.log("웨이포인트: 이 탭에서 '완료한 단계 다시 하기'를 못 찾음 (일치 %.2f) → %d번째 탭 확인"
                      % (rows[best][0], self.wp_main_tab + 1))
