@@ -2425,10 +2425,10 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
                 return st_
             time.sleep(0.2)
 
-    def press(seq):
+    def press(seq, gap=0.1):
         for k in seq:
             io.key(keys[k])
-            time.sleep(0.1)
+            time.sleep(gap)
 
     def close_all():
         """Leave nothing open: Esc while a box, a page under the menu (아이템 필터) or the menu is showing."""
@@ -2449,8 +2449,8 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
         while True:
             f_, n_ = norm_now()
             if n_ is not None and menu_up(n_):
-                time.sleep(0.1)                   # (the menu's fade-in: the lit line is read next)
-                return norm_now()
+                time.sleep(0.25)                  # (the menu's fade-in: the lit line is read next; 0.1 s was
+                return norm_now()                 # too soon now and then: '키보드로 줄을 못 찾아 클릭')
             if time.time() >= t_end:
                 return f_, n_
             time.sleep(0.1)
@@ -2591,7 +2591,9 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             time.sleep(0.15)
             io.click(cx, cy)
         else:
-            press(seq)
+            time.sleep(0.2)                       # the box may still be coming up
+            press(seq, gap=0.25)                  # (Down then Enter 0.1 s apart: the Down was lost once and
+                                                  # the Enter took the upper button: back to the game)
         r = wait_left(3.5)
         log("확인 창 '저장 후 나가기' (%s) -> %s" % ("클릭" if how == "click" else "+".join(seq),
                                              {"left": "마을로 나감", "confirm": "창 그대로", "menu": "메뉴로 돌아감",
