@@ -690,8 +690,9 @@ class Picker:
         each row says before clicking it. -> True when the list is showing."""
         geo = sorter.Geo(frame)
         norm = geo.normalize(frame)
-        if sorter.seen(norm, "wp") < 0.75 or sorter.seen(norm, "panel") >= 0.6 or sorter.seen(norm, "inv") >= 0.7:
-            self.wp_list_tab = None
+        if sorter.seen(norm, "wp") < 0.75 or sorter.seen(norm, "panel") >= 0.6 or sorter.seen(norm, "inv") >= 0.7 \
+                or sorter.seen(norm, "quest") >= 0.7:
+            self.wp_list_tab = None                   # (the quest log has the same act tabs: not the list)
             return False
         self.release()
         if now - self.wp_time < 0.9:
@@ -1796,6 +1797,15 @@ class Picker:
                 self.frame = None
             return True
         self.sub_since = None
+        if sorter.seen(norm0, "quest") >= 0.7:
+            # the quest log (opened by a stray click or key): nothing of ours uses it, close it at once
+            self.release()
+            if now - self.menu_esc > 1.5:
+                self.menu_esc = now
+                self.io.key(Key.esc)
+                self.frame = None
+                self.log("퀘스트 창이 열려 있어 닫음")
+            return True
         if not self.run_text and now - self.leave_at > 10 and sorter.menu_open(norm0):
             # the Esc menu up in town: nothing of ours wants it there (leaving is only from a stage)
             self.release()
