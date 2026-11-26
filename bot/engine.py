@@ -7,6 +7,19 @@ import time
 
 import cv2
 import mss
+try:
+    # mss copies the screen with CAPTUREBLT, which makes Windows hide and redraw the mouse pointer on every
+    # copy: with several copies a second the pointer stutters. Without it the game picture is the same.
+    import importlib
+    for _m in ("mss.windows", "mss.windows.gdi"):          # (mss 9 / mss 10)
+        try:
+            _mod = importlib.import_module(_m)
+            if hasattr(_mod, "CAPTUREBLT"):
+                _mod.CAPTUREBLT = 0
+        except Exception:
+            pass
+except Exception:
+    pass
 import numpy as np
 from pynput.keyboard import Controller as KB, Key
 from pynput.mouse import Button, Controller as Mouse

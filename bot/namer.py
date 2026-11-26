@@ -177,7 +177,8 @@ def step(log, limit=20):
             pass
         try:
             subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, lst, res],
-                           timeout=120, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           timeout=120, capture_output=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | 0x00004000)   # below normal priority
         except Exception as e:
             log("아이템 이름 읽기(윈도우 OCR) 실행 오류: %s" % e)
             return -1
