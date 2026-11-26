@@ -348,6 +348,21 @@ summary::-webkit-details-marker{display:none}
 .rdet time{color:var(--ash);font-variant-numeric:tabular-nums;flex:none}
 .rdet em{font-style:normal;color:var(--ash);margin-left:auto;white-space:nowrap}
 .rdet .why{color:var(--ash);font-size:12px;margin-top:6px}
+.ritot{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+.rilist{display:grid;gap:6px}
+.ri{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;border:0;text-align:left;font:inherit;color:var(--bone);
+ padding:6px;border-radius:10px;background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge)}
+.ri .th{width:64px;height:44px;border-radius:7px;background:#000 center top/cover no-repeat;box-shadow:inset 0 0 0 1px var(--edge2)}
+.ri .rin{min-width:0}
+.ri .rin b{display:inline;font-size:14px;font-weight:700}
+.ri .rin small{display:block;font-size:11.5px;color:var(--ash);margin-top:2px;font-variant-numeric:tabular-nums}
+.st{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.st.sell{color:#ffd9d2;background:rgba(196,66,58,.28);box-shadow:inset 0 0 0 1px rgba(196,66,58,.6)}
+.st.reg{color:#d8f5c8;background:rgba(127,191,90,.2);box-shadow:inset 0 0 0 1px rgba(127,191,90,.55)}
+.st.keep{color:#1b130a;background:linear-gradient(var(--gold2),var(--gold))}
+.st.wait{color:var(--ash);background:var(--iron2);box-shadow:inset 0 0 0 1px var(--edge2)}
+.st.etc{color:var(--ash);box-shadow:inset 0 0 0 1px var(--edge2)}
+.rinone{color:var(--ash);font-size:13px;padding:4px 0 8px}
 .edb{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:800;color:#1b0e05;background:var(--ember2);vertical-align:1px}
 .rempty{padding:22px 16px;color:var(--ash);font-size:13.5px;line-height:1.55;border-radius:14px;box-shadow:inset 0 0 0 1px var(--edge)}
 @media (prefers-reduced-motion:reduce){.embers{display:none}.forge .big .flame,.bars button.lv,.rc.new,.burst{animation:none}.burst{display:none}
@@ -948,6 +963,20 @@ function rollEss(to){
 }
 function runShown(r){return r.live||(!r.skip&&!(r.boss_secs==null&&r.secs<20))}   /* skipped / blink runs: hidden */
 function number(){var k=0;for(var i=runs.length-1;i>=0;i--){var r=runs[i];r.no=runShown(r)?++k:null}}
+/* the items of one run: picture, name, what was done with it */
+var ACT={"판매":["sell","판매"],"등록":["reg","등록"],"교체 등록":["reg","교체 등록"],"보관":["keep","보관"],"인벤토리 보관":["wait","인벤토리"]};
+function itemList(items){
+ if(!items.length)return '<div class="rinone">이 판에서 처리한 아이템이 없습니다</div>';
+ var cnt={};items.forEach(function(x){var a=(ACT[x.action]||["etc",x.action])[0];cnt[a]=(cnt[a]||0)+1});
+ var head='<div class="ritot">'+[["sell","판매"],["reg","등록"],["keep","보관"],["wait","인벤토리 대기"]].filter(function(k){return cnt[k[0]]}).map(function(k){
+  return '<span class="st '+k[0]+'">'+k[1]+" "+cnt[k[0]]+"</span>"}).join("")+"</div>";
+ return head+'<div class="rilist">'+items.slice().sort(function(a,b){return a.t-b.t}).map(function(x){
+  var a=ACT[x.action]||["etc",x.action],sub=a[0]==="keep"?(x.tab?x.tab+" 탭":""):a[0]==="wait"?(x.tab||""):(x.score!=null?x.score+"점":"");
+  var cap=esc(x.name+" · "+a[1]+(sub?" · "+sub:"")+" · "+tclock(x.t));
+  return '<button type="button" class="ri" data-img="'+esc(x.img||"")+'" data-cap="'+cap+'"><span class="th"'+(x.img?' style="background-image:url(/items/'+esc(x.img)+')"':"")+'></span>'+
+   '<span class="rin"><b class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</b>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+'<small>'+tclock(x.t)+(sub?" · "+esc(sub):"")+"</small></span>"+
+   '<span class="st '+a[0]+'">'+esc(a[1])+"</span></button>"}).join("")+"</div>";
+}
 function drawRuns(full){
  freshDraw();number();
  var now=Date.now()/1000,lim=CD.limit||240,cur=runs.length&&runs[0].live?runs[0]:null;
@@ -1027,13 +1056,13 @@ function drawRuns(full){
    '<span class="t2">공포 '+(r.stage||"-")+"단계"+(r.boss_secs!=null?" · 보스 "+mss(r.boss_secs):r.live?"":" · 보스 못 잡음")+(items.length?" · 아이템 "+items.length+"개":"")+(ed.length?" · 증뎀 "+ed.length:"")+"</span></span>"+
    '<span class="gain"><span class="fl">'+fl+'</span><span class="gn'+(g==null?" z":r.ess==null?" guess":"")+'">'+(g==null?(r.live?"":"–"):(r.ess==null?"약 ":"")+g+"개")+"</span></span></button>";
   if(openRun===r.n){
-   html+='<div class="rdet">'+(items.length?items.map(function(x){return "<p><time>"+tclock(x.t)+'</time><span class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</span>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+"<em>"+esc(x.action+(x.tab?" · "+x.tab+" 탭":""))+"</em></p>"}).join(""):
-    '<p><span style="color:var(--ash)">보관·등록한 아이템 없음 (판매한 아이템은 기록하지 않음)</span></p>')+
+   html+='<div class="rdet">'+itemList(items)+
     '<div class="why">'+tclock(r.start)+" ~ "+(r.live?"진행 중":tclock(r.end))+(r.why?" · "+esc(r.why):"")+(r.ess==null&&g!=null?" · 정수는 막·단계로 셈 (인벤토리에서 읽지 않음)":"")+"</div></div>";
   }
  });
  $("rRows").innerHTML=html;newN={};
  Array.prototype.forEach.call(document.querySelectorAll(".rc"),function(b){b.onclick=function(){var n=+b.dataset.n;openRun=openRun===n?null:n;drawRuns(true)}});
+ Array.prototype.forEach.call(document.querySelectorAll(".ri"),function(b){b.onclick=function(){if(b.dataset.img)zoom(b.dataset.img,b.dataset.cap)}});
 }
 function show(v){
  var it=v==="items",kp=v==="keep",rn=v==="runs",ctl=!it&&!kp&&!rn;

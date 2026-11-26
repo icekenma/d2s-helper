@@ -127,8 +127,18 @@ def clear_items():
         n = sum(1 for line in f if line.strip())
     dst = os.path.join(d, "old_" + time.strftime("%Y%m%d_%H%M%S"))
     os.makedirs(dst, exist_ok=True)
+    keep = set()                       # pictures the run log (진행 상황) still shows stay where they are
+    try:
+        with open(os.path.join(d, "actions.jsonl"), "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    keep.add(json.loads(line).get("img") or "")
+                except ValueError:
+                    pass
+    except OSError:
+        pass
     for name in os.listdir(d):
-        if name == "index.jsonl" or ITEM_RE.match(name):
+        if name == "index.jsonl" or (ITEM_RE.match(name) and name not in keep):
             os.replace(os.path.join(d, name), os.path.join(dst, name))
     return n
 

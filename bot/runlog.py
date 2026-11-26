@@ -97,14 +97,16 @@ def build(limit=200):
             runs[-1]["why"] = r.get("why", "")
     runs = runs[-limit:]
     ess = _essence_rows()
-    items = _lines(os.path.join("collected", "index.jsonl"))
+    acts = _lines(os.path.join("collected", "actions.jsonl"))
+    t_acts = min((float(x.get("t", 0) or 0) for x in acts), default=None)
+    # older lines (before the actions log existed) come from the collected-items list
+    items = [x for x in _lines(os.path.join("collected", "index.jsonl"))
+             if t_acts is None or float(x.get("t", 0) or 0) < t_acts] + acts
     now = time.time()
     for i, r in enumerate(runs):
         # the tidy-up at the smith may come a little after the stage is left: count it with this run
         nxt = runs[i + 1]["start"] if i + 1 < len(runs) else None
-        hi = r["end"] + 90 if r["end"] else now + 1
-        if nxt is not None:
-            hi = min(hi, nxt)
+        hi = nxt if nxt is not None else now + 1      # the town tidy after a run counts with that run
         r["live"] = r["end"] is None and i == len(runs) - 1
         if r["end"] is None and not r["live"]:
             r["end"] = nxt
@@ -115,6 +117,7 @@ def build(limit=200):
         r["est"] = essence_guess(r.get("act"), r.get("stage")) if r.get("boss") and not r.get("skip") else None
         r["items"] = [{"t": x.get("t"), "action": x.get("action", ""), "tab": x.get("tab", ""),
                        "kind": x.get("kind", ""), "color": x.get("color", ""), "ed": x.get("ed"),
+                       "img": x.get("img", ""), "score": x.get("score"),
                        "name": x.get("name") or x.get("raw") or x.get("kind") or x.get("quality") or "아이템"}
                       for x in items if r["start"] <= float(x.get("t", 0) or 0) < hi]
     for k, r in enumerate(runs):

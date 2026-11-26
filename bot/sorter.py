@@ -935,9 +935,28 @@ def record_essences(snap, stashed):
         pass
 
 
-def record_item(base_dir, action, ev, tip, tab=""):
-    """Keep a line (and the info-box picture) for every item that was registered or stashed:
-    collected/index.jsonl, read by the phone page. Sold items are never written here."""
+ACTIONS = "actions.jsonl"         # every item handled (sold too), for the run detail on the phone
+_pending = set()                   # items already noted as waiting in the bags (one note per item)
+
+
+def _tip_key(tip):
+    try:
+        g = cv2.resize(cv2.cvtColor(tip, cv2.COLOR_BGR2GRAY), (24, 16), interpolation=cv2.INTER_AREA)
+        return (g > g.mean()).tobytes()
+    except Exception:
+        return None
+
+
+def record_item(base_dir, action, ev, tip, tab="", only_actions=False):
+    """Keep a line (and the info-box picture) for every item handled: collected/actions.jsonl (all of it,
+    sold and waiting ones too: the run detail on the phone) and, for registered / stashed ones,
+    collected/index.jsonl (the collected-items list)."""
+    if action == "인벤토리 보관":
+        k = _tip_key(tip) if tip is not None else None
+        if k is not None:
+            if k in _pending:
+                return                          # already noted in an earlier run
+            _pending.add(k)
     try:
         d = paths.p("collected")
         os.makedirs(d, exist_ok=True)
@@ -968,8 +987,11 @@ def record_item(base_dir, action, ev, tip, tab=""):
                     buf.tofile(os.path.join(pd, img.replace(".jpg", ".png") if img else "%d.png" % int(now)))
             except Exception:
                 pass
-        with open(os.path.join(d, "index.jsonl"), "a", encoding="utf-8") as f:
+        with open(os.path.join(d, ACTIONS), "a", encoding="utf-8") as f:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
+        if not only_actions:
+            with open(os.path.join(d, "index.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
     except Exception:
         pass
 
@@ -1350,6 +1372,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                 if not filled(cell):
                     count["sell"] += 1
                     log("%s 판매 (인벤토리에서 Shift+클릭)" % title(ev))
+                    record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True)
                 else:
                     log("%s: Shift+클릭했지만 칸이 비지 않음" % title(ev))
 
@@ -1358,6 +1381,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
 
         def check_left(cell, ev, d):
             later[d] = later.get(d, 0) + 1
+            if d in ("register", "swap", "keep", "essence", "leave") and cell in footprint:
+                why = {"register": "등록 대기", "swap": "교체 대기", "keep": "보관 대기", "essence": "보관 대기",
+                       "leave": "그대로 둠"}[d]
+                if not (d == "essence" and (cell in ess_cells)):     # essence stacks are counted, not listed
+                    record_item(base_dir, "인벤토리 보관", ev, tip_of.get(cell), why, only_actions=True)
 
         walk(check_left)
         npc = {k: later[k] for k in ("register", "swap", "keep", "essence", "leave") if later.get(k)}
@@ -1504,6 +1532,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                     if not filled(cell):
                         count["sell"] += 1
                         log("%s 판매" % title(ev))
+                        record_item(base_dir, "판매", ev, tip_of.get(cell), only_actions=True)
 
             walk(sell)
     # 4) something looked at again only now (it shared a colour block with another item) may be a keeper
