@@ -435,6 +435,7 @@ class Picker:
         self.portal_note, self.inv_open_since = 0.0, None
         self.panel_since, self.panel_esc = None, 0.0
         self.sub_since, self.sub_esc = None, 0.0
+        self.leave_at, self.menu_esc = 0.0, 0.0     # last Esc -> 저장 후 나가기 of ours; last stray menu closed
         self.wd_at, self.wd_note = 0.0, 0.0
         self.route_played, self.route_note, self.route_end = False, False, None
         self.state["route_done"], self.state["route_len"] = False, 0.0
@@ -984,8 +985,18 @@ class Picker:
             text, done = "보관함 정리 오류: %s" % e, True
         self.log("[마을] " + text)
         self.state["cleaned"] = time.time()
-        self.io.key(Key.esc)
-        time.sleep(0.4)
+        self.io.key(Key.esc)                      # closes the stash and the inventory beside it
+        time.sleep(0.5)
+        f = self.io.grab()
+        if f is not None:
+            n = sorter.Geo(f).normalize(f)
+            if sorter.stash_open(n) or sorter.seen(n, "inv") >= 0.7:
+                self.io.key(Key.esc)
+                time.sleep(0.4)
+            elif sorter.menu_open(n):
+                self.io.key(Key.esc)              # one Esc too many brought up the menu: close it again
+                time.sleep(0.4)
+        self.log("[마을] 보관함 창 닫음: 웨이포인트로 이동해 사냥을 이어감")
         self.frame = None
 
     # ---- smith ------------------------------------------------------------------------------
@@ -1515,6 +1526,7 @@ class Picker:
         if now - self.exit_at < 4.0:
             return
         self.exit_at = now
+        self.leave_at = now
         self.exit_tries += 1
         self.release()
         if self.exit_tries == 1:
@@ -1645,6 +1657,15 @@ class Picker:
                 self.frame = None
             return True
         self.sub_since = None
+        if not self.run_text and now - self.leave_at > 10 and sorter.menu_open(norm0):
+            # the Esc menu up in town: nothing of ours wants it there (leaving is only from a stage)
+            self.release()
+            if now - self.menu_esc > 1.5:
+                self.menu_esc = now
+                self.io.key(Key.esc)
+                self.frame = None
+                self.log("[마을] Esc 메뉴가 열려 있어 닫음: 웨이포인트로 이동해 사냥을 이어감")
+            return True
         if o.get("town_start") and self._wp_menu(frame, s, now):
             if self.over_since is not None:
                 self._new_run()
@@ -1740,7 +1761,8 @@ class Picker:
                 return True
             self.busy = False                         # never wait on anything any more: portal only
         elif self.over_since is None and self.town_since is not None and now - self.town_since > 45 \
-                and now - self.wd_at > 15:
+                and now - self.wd_at > 15 and self.busy and not self.state.get("town_tidy"):
+            # (only when a window really covers the town: an Esc with nothing open brings up the menu)
             self.wd_at = now
             self.town_since = now
             self.release()

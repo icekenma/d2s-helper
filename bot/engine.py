@@ -131,7 +131,9 @@ class Engine(threading.Thread):
                         io.close()
                         self.lock.release()
             if self.cfg.get("auto_clean") and fg and not dry:
-                if sorter.seen(norm, "panel") < 0.6:
+                if self.state.get("town_tidy") and sorter.stash_open(norm):
+                    pass                                     # the town stash: the collector tidies it up
+                elif sorter.seen(norm, "panel") < 0.6:
                     self.cleaned_open = False
                 elif (self.state.get("over") and now - self.state.get("want_smith", 0) > 4
                       and not self.state.get("route_done") and not self.cleaned_open):
