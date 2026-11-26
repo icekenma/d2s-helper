@@ -108,6 +108,11 @@ class App(tk.Tk):
         scorer.set_min_star(self.cfg.get("keep_star", 1))
         sorter.RUN_INFO["stage"] = int(self.cfg.get("stage", 0) or 0)
         self.watch = alert.Watch(self.cfg, save_cfg, lambda m: self.q.put(("log", m)))
+        try:
+            from bot import namer
+            namer.start(lambda m: self.q.put(("log", m)))     # item names for the phone (Windows OCR)
+        except Exception:
+            pass
         self._apply_play()
         self._build()
         self._share()

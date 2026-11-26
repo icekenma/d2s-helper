@@ -458,14 +458,18 @@ class Remote:
                     return self._send(200, json.dumps({"star": star}).encode("utf-8"), "application/json")
                 if u.path == "/api/runs" and method == "GET":
                     from . import runlog
+                    from . import namer
                     rs = runlog.build(300)
+                    for r_ in rs[:150]:
+                        namer.fill(r_.get("items") or [])
                     body = json.dumps({"runs": rs[:150], "hold": runlog.holdings(rs), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/essences" and method == "GET":
                     body = json.dumps(essence_stats(), ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/items" and method == "GET":
-                    body = json.dumps({"items": read_items(remote.base), "now": time.time()}, ensure_ascii=False)
+                    from . import namer
+                    body = json.dumps({"items": namer.fill(read_items(remote.base)), "now": time.time()}, ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
                 if u.path == "/api/invnow" and method == "GET":
                     try:
@@ -473,6 +477,8 @@ class Remote:
                             d = json.load(f)
                     except (OSError, ValueError):
                         d = {"items": [], "t": 0}
+                    from . import namer
+                    namer.fill(d.get("items") or [], folder="inv_now")
                     d["now"] = time.time()
                     return self._send(200, json.dumps(d, ensure_ascii=False).encode("utf-8"),
                                       "application/json; charset=utf-8")

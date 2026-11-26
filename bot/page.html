@@ -1144,7 +1144,7 @@ function itemList(items,r){
   var a=ACT[x.action]||["etc",x.action],sub=a[0]==="keep"?(x.tab?x.tab+" 탭":""):a[0]==="wait"?(x.tab||""):(x.score!=null?x.score+"점":"");
   var cap=esc(x.name+" · "+a[1]+(sub?" · "+sub:"")+" · "+tclock(x.t));
   return '<button type="button" class="ri" data-img="'+esc(x.img||"")+'" data-cap="'+cap+'"><span class="th"'+(x.img?' style="background-image:url(/items/'+esc(x.img)+')"':"")+'></span>'+
-   '<span class="rin"><b class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</b>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+'<small>'+tclock(x.t)+(sub?" · "+esc(sub):"")+"</small></span>"+
+   '<span class="rin"><b class="q-'+esc(x.color||"")+'">'+esc(x.name)+"</b>"+(x.ed?'<span class="edb">증뎀 '+x.ed+"%</span>":"")+'<small>'+(x.q?esc(x.q+(x.base?" "+x.base:""))+" · ":"")+tclock(x.t)+(sub?" · "+esc(sub):"")+"</small></span>"+
    '<span class="sts">'+(x.got?'<span class="st got">획득</span><i>/</i>':"")+'<span class="st '+a[0]+'">'+esc(a[1])+"</span></span></button>"}).join("")+"</div>";
 }
 function drawRuns(full){
