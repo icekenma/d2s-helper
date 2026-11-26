@@ -311,9 +311,9 @@ def _split_stack(m, x, y, bw, bh, s):
 def rare_bow_label(frame, l, s):
     """A rare (yellow) name on the ground worth picking up: arrows / bolts, and bows when rare bows are kept
     ('… 화살', '… 볼트', '… 보우'); every other rare is sold anyway."""
-    if sorter.PLAY.get("rare_skill", True):
-        return True                         # 레어 기술 장신구: a skill line only shows in the bags, pick them all
     _k, cx, cy, bw = l
+    if sorter.PLAY.get("rare_skill", True) and sorter.PLAY.get("rare_bow", False):
+        return True                         # 레어 기술 장신구: a skill line only shows in the bags, pick them all
     h, w = frame.shape[:2]
     x0, x1 = int(max(0, cx - bw / 2 - 4 * s)), int(min(w, cx + bw / 2 + 4 * s))
     y0, y1 = int(max(0, cy - 11 * s)), int(min(h, cy + 11 * s))
@@ -321,7 +321,10 @@ def rare_bow_label(frame, l, s):
         return False
     R, G, B = LABEL_PAL["rare"]
     m = spot.colour_mask(frame[y0:y1, x0:x1], s, (B, G, R))
-    words = ["화살", "볼트", "부적"] + (["보우"] if sorter.PLAY.get("rare_bow", True) else [])   # 부적: rare charms
+    if sorter.PLAY.get("rare_skill", True):
+        # every rare but the bows ('… 보우' on the label): rare weapons are sold anyway (the user's rule)
+        return not ("보우" in spot._words and spot.score(m, "보우") >= RARE_BOW_NEED)
+    words = ["화살", "볼트", "부적"] + (["보우"] if sorter.PLAY.get("rare_bow", False) else [])   # 부적: rare charms
     return any(w in spot._words and spot.score(m, w) >= RARE_BOW_NEED for w in words)
 
 
@@ -1401,7 +1404,7 @@ class Picker:
             labs = keep_
             if skip_ and not self.g_rare_note:
                 self.g_rare_note = True
-                self.log("[3단계] 레어 이름표 %d개는 화살·볼트·활·부적이 아니라 줍지 않음 (어차피 판매 대상)" % skip_)
+                self.log("[3단계] 레어 이름표 %d개는 줍지 않음 (%s, 어차피 판매 대상)" % (skip_, "레어 활" if sorter.PLAY.get("rare_skill", True) else "화살·볼트·부적이 아님"))
         chests = find_chests(f, s) if self.opts.get("open_chests", False) else []
         full = 0.0
         if now - self.g_full_look >= 0.9:

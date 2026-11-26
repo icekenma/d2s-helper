@@ -5,6 +5,7 @@ The game draws its UI as an 800x600 layout scaled by window height and centred
 horizontally, so every coordinate here is in that 800x600 space.
 """
 import json
+import re
 import os
 import time
 
@@ -17,7 +18,7 @@ from . import namer
 
 INV_X, INV_Y, CELL, INV_COLS, INV_ROWS = 418, 313, 29, 10, 4
 ESSENCE_HOLD = 90            # an essence stack stays in the bags until it holds this many (then: stash)
-PLAY = {"rare_bow": True}   # 사냥 설정 from the helper (rare bows kept)
+PLAY = {"rare_bow": False}  # 사냥 설정 from the helper (rare bows kept: off, the user wants no rare weapons)
 RARE_BOW_LEVEL = 60          # rare bows / crossbows needing this level or more are kept, every other rare is sold
 ESS_NEED = 0.6          # essence picture match
 TAB_SHOP, TAB_STASH = (117, 17), (263, 17)              # old window: 파라 / 도박 / 보관함 / 비술 트리
@@ -1390,6 +1391,17 @@ RARE_SKILL_MAYBE = 0.5     # '기술' picture this good on a rare's line and no 
 RARE_SKILL_SURE = 0.8      # ... and this good: kept even when the OCR found no '기술' (it may have misread it)
 
 
+WEAPON_RE = re.compile(r"(한\s*손|양\s*손|투\s*척)\s*피\s*해|공격\s*속도")   # weapon damage lines (OCR)
+
+
+def rare_weapon(ev, cell=None):
+    """A rare weapon (bow, crossbow, javelin ...): '양손 피해' etc. read by OCR, or the '보우' picture.
+    Rare weapons are not kept for a skill line (the user's rule), only by the 레어 활 보관 switch."""
+    if ev.get("rare_ocr_weapon"):
+        return True
+    return bool(ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55)
+
+
 def rare_has_skill(ev):
     """A skill line on this rare: the Windows OCR decides when it read the box (a mask with no skill line went
     to the stash as '레어 기술' on the '기술' picture alone); the picture only when there was no OCR.
@@ -1707,7 +1719,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             ev["kind"] = "레어 " + ev["quiver"]
             return "keep"                       # rare arrows / bolts: collected, to the stash (the user's rule)
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm") \
-                and PLAY.get("rare_skill", True) and rare_has_skill(ev):
+                and PLAY.get("rare_skill", True) and rare_has_skill(ev) and not (rare_weapon(ev, cell) and not PLAY.get("rare_bow")):
             # a rare with a skill line, like the rankers' amulets (+16~18 아마존 기술), gloves (+3 활과 석궁
             # 기술) and circlets. Any size: the block read from the bag colours can take in a neighbour,
             # and a keeper sold for that is lost for good (a +3 bow-skill glove went that way)
@@ -1959,11 +1971,13 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                     ev_["rare_ocr"] = "na"                   # (hardly read: the picture rule decides)
                     continue
                 has, other = scorer.skill_text(lines)
+                ev_["rare_ocr_weapon"] = any(WEAPON_RE.search(t) for t in lines[1:6])
                 ev_["rare_ocr"] = "skill" if has else "none"
                 ev_["rare_ocr_other"] = other
                 if has:
                     ev_["rare_ocr_line"] = next((t for t in lines[2:] if scorer.SKILL_RE.search(t)), "")
-                if not rare_has_skill(ev_) and str(ev_.get("kind") or "").startswith("레어 기술"):
+                if (not rare_has_skill(ev_) or (rare_weapon(ev_) and not PLAY.get("rare_bow"))) \
+                        and str(ev_.get("kind") or "").startswith("레어 기술"):
                     ev_["kind"] = ""                        # (decide() named it for the skill rule)
                 d1 = decide(ev_, c_)
                 if d1 != d0:
