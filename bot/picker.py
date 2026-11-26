@@ -1996,7 +1996,7 @@ class Picker:
         bad = max([v.count(k) for k in (1, 2, 5)] or [0])
         bv = self.banner_votes
         banner = bv[-1] if len(bv) >= 2 and bv[-1] == bv[-2] else None      # the big digit, twice in a row
-        fast = self.opts.get("fast_mode")
+        fast = self.opts.get("fast_mode") or self.opts.get("nofarm")
         if banner in (3, 4) or (banner is None and good >= 2):
             a = banner or max((3, 4), key=lambda k: v.count(k))
             self.act_done, self.reroll_n = True, 0
@@ -2561,6 +2561,14 @@ class Picker:
             self._act_check(frame, now)
             if self.rerolling:
                 return
+        if self.opts.get("nofarm") and self.over_since is not None:
+            # 패스트 & 노파밍: the essences come into the bags by themselves; 3 s after the boss, the next run
+            self.release()
+            if now - self.over_since < 3.0:
+                return
+            if self.exit_tries < 6:
+                self._exit_town(now, "패스트 & 노파밍: 보스 처치 3초 뒤 -> 줍기 없이 Esc로 다음 판")
+            return
         if self.opts.get("fast_mode") and self.over_since is not None and not self.forced:
             # 패스트 모드: the essences come into the bags by themselves when the boss dies. Pick up
             # nothing, no route, no smith, no inventory: Esc -> town -> next run.
