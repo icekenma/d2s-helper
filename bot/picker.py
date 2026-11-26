@@ -214,6 +214,7 @@ LABEL_KO = {"set": "세트", "unique": "유니크", "magic": "주얼(파란 이�
 STASH_FROM_WP = (-848.0, -122.0)   # the stash chest from the waypoint pad (fixed town layout, 800x600 units)
 STASH_FROM_FIRE = (35.0, -171.0)   # ... and from the middle of the big campfire next to it
 STASH_TOWN = (-380.0, -125.0)  # the stash chest in town (도적 야영지), from the middle of the screen at arrival
+TOWN_TIDY_ITEMS = 3        # this many things to register / stash in the bags: to the stash in town after the run
 TOWN_TIDY_FREE = 12        # fewer free inventory cells than this after selling: to the stash in town after the run
 RESUME_FREE = 4             # picking up stopped for full bags: on again once selling freed this many cells
 GATHER_WAIT = (1.0, 4.0)    # after the boss: at least / at most this long for the items to gather round
@@ -1317,7 +1318,7 @@ class Picker:
         self.g_max = max(self.g_max, len(labs) + len(chests))
         if not todo or waited > GATHER_MAX:
             self.g_empty += 1
-            if waited <= GATHER_MAX and (self.g_empty < 2 or (self.count == 0 and self.g_chests == 0
+            if waited <= GATHER_MAX and (self.g_empty < 3 or (self.count == 0 and self.g_chests == 0
                                                               and waited < GATHER_WAIT[1] + 2)):
                 return True                            # look again: labels shift after a pick-up, and late
                                                        # drops (from a chest, slow to come round) still land
@@ -1498,16 +1499,18 @@ class Picker:
                              % ("?" if free is None else free))
                 self.w_stage = "exit"
                 return
-            if need_npc and (free is None or free < TOWN_TIDY_FREE) and not self.opts.get("town_tidy", True):
+            n_store = sum((need.get("what") or {}).values()) if need_npc else 0
+            if need_npc and (free is None or free < TOWN_TIDY_FREE or n_store >= TOWN_TIDY_ITEMS) \
+                    and not self.opts.get("town_tidy", True):
                 self.log("[4단계] 등록·보관할 아이템이 있고 빈 칸이 %s칸뿐이지만 마을 창고 정리가 꺼져 있음 (인벤토리 즉시 정리로 직접 정리)"
                          % ("?" if free is None else free))
-            elif need_npc and (free is None or free < TOWN_TIDY_FREE):
+            elif need_npc and (free is None or free < TOWN_TIDY_FREE or n_store >= TOWN_TIDY_ITEMS):
                 self.state["town_tidy"] = time.time()
-                self.log("[4단계] 등록·보관할 아이템이 있고 빈 칸이 %s칸뿐: 마을에서 창고 정리 예약 (%s)"
-                         % ("?" if free is None else free, need.get("what")))
+                self.log("[4단계] 등록·보관할 아이템 %d개 (빈 칸 %s): 마을에서 창고 정리 예약 (%s)"
+                         % (n_store, "?" if free is None else free, need.get("what")))
             elif need_npc:
-                self.log("[4단계] 등록·보관할 아이템은 인벤토리에 둠 (빈 칸 %d칸, %d칸 아래로 줄면 마을 창고에서 정리): %s"
-                         % (free, TOWN_TIDY_FREE, need.get("what")))
+                self.log("[4단계] 등록·보관할 아이템 %d개는 인벤토리에 둠 (%d개 이상이 되면 마을 창고에서 정리): %s"
+                         % (n_store, TOWN_TIDY_ITEMS, need.get("what")))
             self.log("[4단계] 파밍·정리 완료 -> Esc 메뉴로 마을 귀환")
             self.w_stage = "exit"
             return
