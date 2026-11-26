@@ -1884,6 +1884,7 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
             # one line at a time, looking after every key: Enter only once the pentagrams stand beside
             # '저장 후 나가기' (an Enter on another line opens 설정 / 아이템 필터 instead)
             on_exit = False
+            steps = 0
             for _ in range(8):
                 f_, n_ = norm_now()
                 if n_ is None:
@@ -1897,7 +1898,10 @@ def leave_via_menu(io, log, open_menu, keys=None, attempt=1):
                     break
                 if not menu_open(n_):
                     break
-                press(["down"])
+                # the menu opens on its top line: one Up wraps round to '저장 후 나가기' (the last line).
+                # If that did not land there, one line down at a time from wherever the cursor is.
+                press(["up"] if steps == 0 and lit_row(n_) in (0, None) else ["down"])
+                steps += 1
                 time.sleep(0.15)
             if on_exit:
                 press(["enter"])
