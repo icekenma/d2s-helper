@@ -52,6 +52,7 @@ def _plain_dirs():
 
 def load(base, tess_path=""):
     load_keep(base)
+    load_pick()
     with open(os.path.join(base, "assets", "items_kr.json"), "r", encoding="utf-8") as f:
         _db[:] = json.load(f)
     for it in _db:
@@ -274,11 +275,39 @@ def set_min_star(n):
 
 
 def _set_keep(out, nm):
-    """A keep-list name was recognised: always kept (the user's rule: every item on the list goes to the
-    stash, whatever its stars)."""
+    """A keep-list name was recognised: kept for sure (to the stash, before any other rule) only when the
+    user picked it on the keep-list page; otherwise just noted (its stars show on the phone)."""
     st = STAR.get(nm, 5)
     out["star"], out["seen_name"] = st, nm
-    out["keep_name"], out["kind"] = nm, nm
+    if nm in KEEP_PICK:
+        out["keep_name"], out["kind"] = nm, nm
+
+
+KEEP_PICK = set()                            # names the user picked: always to the stash
+PICK_FILE = "keep_pick.json"
+
+
+def load_pick():
+    from . import paths
+    try:
+        with open(paths.p(PICK_FILE), "r", encoding="utf-8") as f:
+            KEEP_PICK.clear()
+            KEEP_PICK.update(n for n in json.load(f) if isinstance(n, str))
+    except (OSError, ValueError):
+        pass
+
+
+def set_pick(name, on):
+    from . import paths
+    if on:
+        KEEP_PICK.add(name)
+    else:
+        KEEP_PICK.discard(name)
+    try:
+        with open(paths.p(PICK_FILE), "w", encoding="utf-8") as f:
+            json.dump(sorted(KEEP_PICK), f, ensure_ascii=False)
+    except OSError:
+        pass
 
 
 def load_keep(base):

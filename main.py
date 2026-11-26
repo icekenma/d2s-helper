@@ -706,6 +706,7 @@ class App(tk.Tk):
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
+            self.remote.note = lambda m: self.q.put(("log", m))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
             self._show_url()

@@ -412,9 +412,25 @@ class Remote:
                     body = json.dumps({"order": scorer.KEEP_LIST.get("order", []),
                                        "classes": scorer.KEEP_LIST.get("classes", {}),
                                        "pics": sorted(scorer.keep_pictures()), "ocr": ok, "ocr_text": how,
-                                       "min_star": scorer.KEEP_MIN_STAR[0]},
+                                       "min_star": scorer.KEEP_MIN_STAR[0], "picked": sorted(scorer.KEEP_PICK)},
                                       ensure_ascii=False)
                     return self._send(200, body.encode("utf-8"), "application/json; charset=utf-8")
+                if u.path == "/api/keeppick" and method == "POST":
+                    from . import scorer
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
+                        name, on = str(d.get("n", "")), bool(d.get("on"))
+                    except Exception:
+                        return self._send(400, b'{"error":"pick"}', "application/json")
+                    if name not in scorer.KEEP_SET:
+                        return self._send(400, b'{"error":"name"}', "application/json")
+                    scorer.set_pick(name, on)
+                    cb = getattr(remote, "note", None)
+                    if cb:
+                        cb("휴대폰 보관 목록: '%s' %s" % (name, "무조건 보관으로 선택" if on else "선택 해제"))
+                    return self._send(200, json.dumps({"n": name, "on": on}, ensure_ascii=False).encode("utf-8"),
+                                      "application/json")
                 if u.path == "/api/keepstar" and method == "POST":
                     from . import scorer
                     try:

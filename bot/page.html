@@ -453,6 +453,11 @@ summary::-webkit-details-marker{display:none}
 .kseg button[aria-checked=true]{background:linear-gradient(var(--gold2),var(--gold));color:#1b130a;box-shadow:0 2px 10px rgba(210,163,74,.25)}
 .kseg button[aria-checked=true] small{color:#4a3510}
 .ki.off{opacity:.45}
+button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
+.ki .pick{grid-row:1/span 2;grid-column:2;font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;white-space:nowrap;
+ color:var(--ash);box-shadow:inset 0 0 0 1px var(--edge2)}
+.ki.on{background:linear-gradient(90deg,rgba(210,163,74,.12),transparent 70%),var(--iron);box-shadow:inset 0 0 0 1px rgba(210,163,74,.6),inset 3px 0 0 var(--gold)}
+.ki.on .pick{color:#1b130a;background:linear-gradient(var(--gold2),var(--gold));box-shadow:none}
 .ki.off .how::before{display:none}
 .ki .sb{grid-column:1;font-size:12.5px;color:var(--ash)}
 .ki .how{grid-row:1/span 2;grid-column:2;font-size:11.5px;color:var(--ash);display:flex;align-items:center;gap:5px;white-space:nowrap}
@@ -894,7 +899,8 @@ function drawKeep(){
  var pics={};(keep.pics||[]).forEach(function(n){pics[n]=1});
  var all={};Object.keys(keep.classes).forEach(function(c){keep.classes[c].forEach(function(x){all[x.n]=1})});
  var npic=Object.keys(all).filter(function(n){return pics[n]}).length,ntot=Object.keys(all).length;
- $("kpNote").innerHTML="<b>무조건 보관함으로 가는 아이템</b>여기 있는 아이템은 별 개수·세트·강화 여부와 상관없이 팔지도, 수집품에 등록하지도 않고 언제나 보관함에 넣습니다. 모든 직업의 목록이 함께 적용됩니다. 별은 중요도 표시(★5가 최상)입니다."+
+ var picked={};(keep.picked||[]).forEach(function(n){picked[n]=1});var npick=Object.keys(picked).length;
+ $("kpNote").innerHTML="<b>무조건 보관할 아이템 고르기</b>아이템을 눌러 <b style=\"display:inline;color:var(--gold2)\">무조건 보관</b>으로 고르면, 별·세트·강화 여부와 상관없이 팔지도 등록하지도 않고 언제나 보관함에 넣습니다. 고르지 않은 아이템은 평소 규칙(새 유니크 등록, 세트·여분 판매 등)대로 처리합니다. 지금 <b style=\"display:inline;color:var(--gold2)\">"+npick+"개</b> 골랐습니다."+
   '<div class="ocr'+(keep.ocr?"":" off")+'"><i></i><span>'+(keep.ocr?"글자 인식이 켜져 있어 목록의 "+ntot+"개를 모두 이름으로 알아봅니다.":
   "글자 인식(Tesseract)이 꺼져 있어 <b style=\"display:inline;color:var(--gold2)\">금색 점</b>이 있는 "+npic+"개만 그림으로 알아봅니다. 나머지 "+(ntot-npic)+"개는 Tesseract를 설치하면 알아봅니다.")+"</span></div>";
  var mn=keep.min_star||1,keepN=0;
@@ -909,15 +915,19 @@ function drawKeep(){
  Array.prototype.forEach.call($("kChips").children,function(b){b.onclick=function(){kcls=b.dataset.c;drawKeep()}});
  var list=keep.classes[kcls]||[],html="";
  ["룬워드","유니크","세트"].forEach(function(t){
-  var g=list.filter(function(x){return x.t===t}).sort(function(a,b){return (b.star||0)-(a.star||0)});if(!g.length)return;
-  html+='<div class="kg"><b>'+t+"</b><span>"+g.length+"개</span></div>"+g.map(function(x){
+  var g=list.filter(function(x){return x.t===t}).sort(function(a,b){return (picked[b.n]?1:0)-(picked[a.n]?1:0)||(b.star||0)-(a.star||0)});if(!g.length)return;
+  html+='<div class="kg"><b>'+t+"</b><span>"+g.filter(function(x){return picked[x.n]}).length+" / "+g.length+"개 고름</span></div>"+g.map(function(x){
    var st=x.star||0;
-   var off=false;                      /* every item on the list is kept */
-   return '<div class="ki'+(off?" off":"")+'"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
-    '<i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span></span>"+'<span class="sb">'+esc(x.b+" · "+x.why)+
-    '</span><span class="how'+(!off&&pics[x.n]?" pic":"")+'">'+(off?"보관 안 함":pics[x.n]?"그림":"글자")+"</span></div>"}).join("");
+   var on=!!picked[x.n];
+   return '<button type="button" class="ki pk'+(on?" on":"")+'" data-n="'+esc(x.n)+'" aria-pressed="'+on+'"><span class="nm '+(TYPE_CLS[x.t]||"")+'">'+esc(x.n)+'<span class="stars" role="img" aria-label="중요도 '+st+'/5">'+
+    '<i>'+"★".repeat(st)+"</i>"+"★".repeat(5-st)+"</span></span>"+'<span class="sb">'+esc(x.b+" · "+x.why)+(pics[x.n]?" · 그림으로 알아봄":"")+
+    '</span><span class="pick">'+(on?"무조건 보관":"고르기")+"</span></button>"}).join("");
  });
  $("kList").innerHTML=html;
+ Array.prototype.forEach.call(document.querySelectorAll("#kList .pk"),function(b){b.onclick=function(){
+  var n=b.dataset.n,on=!keep.picked||keep.picked.indexOf(n)<0;
+  keep.picked=(keep.picked||[]).filter(function(x){return x!==n});if(on)keep.picked.push(n);drawKeep();
+  post("/api/keeppick",{n:n,on:on}).catch(function(){})}});
 }
 /* ---- run log ---- */
 var runs=[],openRun=null,runsT=null,seenN=null,newN={},essShown=null,essAnim=null;
