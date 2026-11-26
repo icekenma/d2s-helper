@@ -1156,6 +1156,27 @@ def wp_tab_ranges(frame):
                 out[i] = (lo, lo + 9) if lo > 0 else None
     return out
 
+def hud_life(norm):
+    """The bottom bar's '생명력: 2041 / 2041' (shown above the red orb) -> the maximum, or None.
+    Tells which character is being played: the bow Amazon has about 2000, the others far less."""
+    from . import tipread
+    for y0, y1 in ((478, 504), (472, 510)):
+        c = norm[y0:y1, 2:200]
+        if c.size == 0:
+            continue
+        c = cv2.copyMakeBorder(c, 12, 12, 12, 12, cv2.BORDER_CONSTANT, value=0)
+        try:
+            r = tipread.read(c, 1.0)
+        except Exception:
+            return None
+        lines = r[0] if isinstance(r, tuple) else r
+        for l in lines:
+            n = l.get("numbers") or []
+            if len(n) >= 2 and n[-1] >= 30 and n[-2] <= n[-1]:
+                return int(n[-1])
+    return None
+
+
 BTN_COLLECT = (265, 461)        # "수집": the game's own register-everything-new button
 TAB_UNIQUE = (355, 51)          # the "고유" (collection) sub-tab of the stash
 

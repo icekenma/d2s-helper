@@ -692,6 +692,171 @@ class Picker:
                if not any(abs(b[0] - o[0]) < 6 * s and abs(b[1] - o[1]) < 6 * s for o in old)]
         return "other" if new else None
 
+    # ---- the character played: the bow Amazon only -------------------------------------------
+    ME_FILE = "me.json"        # {"life": max life of the character to play, "label": its name label picture}
+    ME_TOL = (0.7, 1.45)       # max life within this ratio of the stored one: the same character
+
+    def _me_load(self):
+        if getattr(self, "me", None) is None:
+            self.me = {}
+            try:
+                import json
+                from . import paths
+                with open(paths.p(self.ME_FILE), "r", encoding="utf-8") as f:
+                    self.me = json.load(f) or {}
+            except (OSError, ValueError):
+                self.me = {}
+        return self.me
+
+    def _me_save(self):
+        try:
+            import json
+            from . import paths
+            with open(paths.p(self.ME_FILE), "w", encoding="utf-8") as f:
+                json.dump(self.me, f)
+        except OSError:
+            pass
+
+    def _me_same(self, life):
+        ref = self._me_load().get("life")
+        return ref is None or life is None or self.ME_TOL[0] <= life / float(ref) <= self.ME_TOL[1]
+
+    def _me_life(self):
+        f = self.io.grab()
+        if f is None:
+            return None
+        try:
+            return sorter.hud_life(sorter.Geo(f).normalize(f))
+        except Exception:
+            return None
+
+    def _me_check(self, frame, now):
+        """In town: is it still the character the helper was started with? (A click on one of the player's
+        other characters standing round the stash plays that one: a whole night at the waypoint once.)
+        -> True while it is not (no waypoint, no stage: the right character is looked for first)."""
+        if now - getattr(self, "me_at", 0) < 4:
+            return getattr(self, "me_bad", 0) >= 2
+        self.me_at = now
+        try:
+            life = sorter.hud_life(sorter.Geo(frame).normalize(frame))
+        except Exception:
+            life = None
+        if life is None:
+            return False                              # (the bar's numbers are not shown: no check)
+        me = self._me_load()
+        if me.get("life") is None:
+            me["life"] = life                         # the character the helper started with
+            self._me_save()
+            self.log("[캐릭터] 사냥할 캐릭터 기억: 생명력 최대 %d (다른 캐릭터로 바뀌면 되돌림)" % life)
+            return False
+        if self._me_same(life):
+            self.me_bad = 0
+            if abs(life - me["life"]) >= 20:
+                me["life"] = life                     # (gear changed: follow it)
+                self._me_save()
+            return False
+        self.me_bad = getattr(self, "me_bad", 0) + 1
+        if self.me_bad < 2:
+            return True                               # (read again before doing anything)
+        if now - getattr(self, "me_try_at", 0) < 60:
+            return True
+        self.me_try_at = now
+        self.release()
+        self.log("[캐릭터] 다른 캐릭터로 바뀌어 있음 (생명력 최대 %d, 원래 %d): 마을의 캐릭터에 마우스를 올려 원래 캐릭터로 되돌림"
+                 % (life, me["life"]))
+        if self._me_swap_back():
+            self.me_bad = 0
+            self.town_since = time.time()
+        return True
+
+    def _label_sig(self, g, box):
+        """A name label as a small black-and-white picture (to know the same name again)."""
+        x0, y0, x1, y1 = box
+        c = cv2.cvtColor(g[max(0, y0):y1, max(0, x0):x1], cv2.COLOR_BGR2GRAY)
+        if c.size == 0:
+            return None
+        b = (c > 120).astype(np.float32)
+        hh = 16
+        ww = max(8, int(round(b.shape[1] * hh / float(max(1, b.shape[0])))))
+        return cv2.resize(b, (ww, hh), interpolation=cv2.INTER_AREA)
+
+    @staticmethod
+    def _sig_same(a, b):
+        if a is None or b is None or abs(a.shape[1] - b.shape[1]) > max(4, 0.15 * a.shape[1]):
+            return 0.0
+        w_ = min(a.shape[1], b.shape[1])
+        a_, b_ = a[:, :w_] - a[:, :w_].mean(), b[:, :w_] - b[:, :w_].mean()
+        d = float(np.sqrt((a_ * a_).sum() * (b_ * b_).sum()))
+        return float((a_ * b_).sum() / d) if d > 0 else 0.0
+
+    def _me_swap_back(self):
+        """Hover the people in town; a name that is the remembered one ('아마존', learnt the first time) is
+        clicked first; without it every name is tried in turn, and the bar's maximum life tells whether
+        the right character is back. -> True when it is."""
+        me = self._me_load()
+        want = np.array(me["label"], np.float32) if me.get("label") else None
+        t_end = time.time() + 150
+        tried = []                                     # (signature, x, y) clicked or passed over
+        f = self.io.grab()
+        if f is None:
+            return False
+        h, w = f.shape[:2]
+        s = (h - self.top) / 600.0
+        cx, cy = w / 2.0, self.top + (h - self.top) / 2.0
+        pts = [(x, y) for y in np.arange(self.top + 70 * s, h - 140 * s, 40 * s)
+               for x in np.arange(0.04 * w, 0.96 * w, 46 * s)]
+        pts.sort(key=lambda q: (q[0] - cx) ** 2 + (q[1] - cy) ** 2)
+        for rnd in ("want", "any"):
+            if rnd == "want" and want is None:
+                continue
+            for x, y in pts:
+                if time.time() > t_end:
+                    break
+                f0 = self.io.grab()
+                self.io.move(int(x), int(y))
+                time.sleep(0.1)
+                g = self.io.grab()
+                if f0 is None or g is None or g.shape[:2] != (h, w):
+                    continue
+                def near(boxes):
+                    return [b for b in boxes if b[0] - 20 * s <= x <= b[2] + 20 * s and y - 110 * s <= b[3] <= y + 20 * s]
+                old = near(find_labels(f0, s))
+                new = [b for b in near(find_labels(g, s))
+                       if not any(abs(b[0] - o[0]) < 6 * s and abs(b[1] - o[1]) < 6 * s for o in old)]
+                if not new:
+                    continue
+                box = new[0]
+                if spot.label_score(g[max(0, box[1] - 4):box[3] + 4, max(0, box[0] - 4):box[2] + 4], s, "보관함") >= 0.7 \
+                        or spot.label_score(g[max(0, box[1] - 4):box[3] + 4, max(0, box[0] - 4):box[2] + 4], s, "웨이포인트") >= 0.7:
+                    continue                           # the stash / the waypoint, not a person
+                sig = self._label_sig(g, box)
+                lx, ly = (box[0] + box[2]) / 2.0, box[3]
+                if any(abs(lx - tx) < 50 * s and abs(ly - ty) < 50 * s for _sg, tx, ty in tried):
+                    continue                           # this one was tried already (hovered from another spot)
+                if rnd == "want" and self._sig_same(sig, want) < 0.8:
+                    continue
+                tried.append((sig, lx, ly))
+                before = self._me_life()
+                self.io.click(int(x), int(y))
+                self.log("[캐릭터] 마을의 캐릭터를 누름 (%s): 화면 (%d, %d)" % ("기억한 이름" if rnd == "want" else "차례로 확인", x, y))
+                life = None
+                for _ in range(14):
+                    time.sleep(0.5)
+                    life = self._me_life()
+                    if life is not None and life != before:
+                        break
+                if life is not None and self._me_same(life) and life != before:
+                    me["label"] = sig.tolist()         # this name is the right one: straight to it next time
+                    self._me_save()
+                    self.log("[캐릭터] 원래 캐릭터로 되돌림 (생명력 최대 %d)" % life)
+                    return True
+                if life == before:
+                    self.io.key(Key.esc)               # a townsman's talk window, or nothing happened
+                    time.sleep(0.4)
+                # another character came up (it now stands where the old one was): look on
+        self.log("[캐릭터] 원래 캐릭터를 찾지 못함: 1분 뒤 다시 (마을 화면을 캡처해 보내 주세요)")
+        return False
+
     def _town_click(self, x, y, want=None, portal_ok=True):
         """A click in town that never lands on a person: the player's other characters stand round the
         stash, and a click on one plays that character from then on (a night at the waypoint with a
@@ -918,16 +1083,6 @@ class Picker:
                 self.wp_tab_tries += 1                    # (the count goes on: the arrows are tried twice)
                 self.log("웨이포인트: %d번째 탭이 안 열려 %s 화살표로 탭 줄을 넘김" % (tab + 1, "이전" if tab == 0 else "다음"))
                 return True
-            if self.wp_tab_tries > 6 and getattr(self, "wp_fr_fail", 0) >= 2 and lit_rng and lit_rng[1] < stage:
-                # neither the stage's tab nor the newest stage works: the highest stage of the open tab
-                r_ = lit_rng[1] - lit_rng[0]
-                if r_ < len(rows) and rows[r_][1] >= 0.6:
-                    self.wp_tab_tries = 0
-                    self.wp_list_tab = None
-                    self.io.click(*geo.raw(sorter.WP_X, sorter.WP_LIST_ROW1 + sorter.WP_LIST_PITCH * r_))
-                    self.log("웨이포인트: %d단계 탭도 새 단계도 안 열려 임시로 공포 영역 %d 시작 (열린 탭 %d~%d) "
-                             "- 단계 목록 화면을 캡처해 보내 주세요" % (stage, lit_rng[1], lit_rng[0], lit_rng[1]))
-                    return True
             if self.wp_tab_tries > 6:
                 self.wp_tab_tries = 0
                 self.wp_list_tab = None
@@ -1008,6 +1163,8 @@ class Picker:
             self.wp_walks = 0
         if not self.state.get("town_stuck_since"):
             self.state["town_stuck_since"] = now         # (main: a phone alarm after 5 minutes in town)
+        if self._me_check(frame, now):
+            return                                       # not the character to play: no waypoint
         if self.state.get("ess_check") and not self.state.get("town_tidy"):
             self.state["town_tidy"] = now                # '정수 개수 확인': the stash chest first
             self.log("[정수 확인] 마을 도착: 보관함에서 정수 개수를 셈")
