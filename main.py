@@ -942,6 +942,33 @@ class App(tk.Tk):
             self.l_cd.configure(text="%d:%02d" % (sec // 60, sec % 60), fg=RED if sec <= 30 else GOLD)
             self.l_cd_note.configure(text="다음 판까지" if sec else "다음 판으로 이동 중")
 
+    TOWN_STUCK = 300           # s in town without getting into a stage: phone alarm (again every 20 minutes)
+
+    def _town_stuck(self):
+        """A phone alarm when the helper has stood in town for 5 minutes (a night at the waypoint once)."""
+        try:
+            st = self.engine.state if self.engine is not None else {}
+            if st.get("stage_in"):
+                st["town_stuck_since"] = None             # in a stage: the town watch starts again next time
+            t0 = st.get("town_stuck_since")
+        except Exception:
+            t0 = None
+        now = time.time()
+        if not t0 or now - t0 < self.TOWN_STUCK:
+            return
+        if now - getattr(self, "stuck_sent", 0) < 1200:
+            return
+        self.stuck_sent = now
+        mins = int((now - t0) // 60)
+        self._say("경고: 마을에서 %d분째 사냥터로 출발하지 못함 (웨이포인트·창고 확인)" % mins)
+        try:
+            if self.watch.conf.get("on"):
+                self.watch._post("D2S 경고: 마을에서 %d분째 멈춤" % mins,
+                                 "도우미가 %d분 동안 사냥터에 들어가지 못했습니다. 휴대폰 '화면 보기'로 게임 화면을 확인하고, "
+                                 "로그 파일(10분)을 받아 보내 주세요." % mins)
+        except Exception:
+            pass
+
     def _log_meta(self):
         """What goes at the top of a downloaded log file (called from the phone server's thread)."""
         st = {k: v for k, v in dict(self.shared or {}).items() if k not in ("log", "rules")}
@@ -1167,6 +1194,7 @@ class App(tk.Tk):
             self.watch.check(self.engine is not None)
         except Exception:
             pass
+        self._town_stuck()
         try:
             self.watch.items()
         except Exception:

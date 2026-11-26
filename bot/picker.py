@@ -761,6 +761,10 @@ class Picker:
         self.wp_time = now
         if main:
             self.wp_list_tab = None
+            if getattr(self, "wp_fr_at", 0) and now - self.wp_fr_at < 8:
+                self.wp_fr_fail = getattr(self, "wp_fr_fail", 0) + 1   # still here after the newest stage's click
+                self.log("웨이포인트: 새 단계 줄을 눌렀지만 시작되지 않음 (%d번째)" % self.wp_fr_fail)
+            self.wp_fr_at = 0
             # '완료한 단계 다시 하기': the row that reads it clearly better than all the others
             # (the newest stage's entry is two lines tall, so this row is not at a fixed place)
             order = sorted(range(len(rows)), key=lambda k: -rows[k][0])
@@ -779,6 +783,7 @@ class Picker:
                     if lit_main is not None:
                         self.wp_term_tab = lit_main
                     self.io.click(*geo.raw(sorter.WP_X, sorter.WP_ROW1 + sorter.WP_PITCH * fr[0]))
+                    self.wp_fr_at = now
                     self.log("웨이포인트: 새로 열린 공포 영역(%d번째 줄) 시작" % (fr[0] + 1))
                     return True
                 if stage <= 0 and done:
@@ -847,11 +852,34 @@ class Picker:
             self.wp_page_turns, self.wp_page_seen = 0, None
             tab, row = pos, stage - rng[pos][0]
         lit = sorter.wp_lit_tab(geo.normalize(frame))
+        lit_rng = rng[lit] if (known and lit is not None and rng[lit]) else None
+        if lit_rng and lit_rng[0] <= stage <= lit_rng[1]:
+            # the open tab holds the stage, whatever its place in the strip: clicking a tab at the edge
+            # scrolls the strip (41~50 clicked as the 5th tab shows up lit as the 2nd), and the old check
+            # 'lit == the tab clicked' then failed for good (a whole night at the waypoint)
+            tab, row = lit, stage - lit_rng[0]
+            self.wp_list_tab = tab
         if self.wp_list_tab != tab or lit != tab:
             # click the stage's tab and do not go on until that tab really is the open one
             # (otherwise row 1 of the 1~9 tab = stage 1 would be clicked for stage 10)
             self.wp_tab_tries = (getattr(self, "wp_tab_tries", 0) + 1) if self.wp_list_tab == tab else 1
             self.wp_list_tab = tab
+            if self.wp_tab_tries in (3, 5) and known and tab in (0, 4):
+                # a tab at the strip's edge that does not open: scroll the strip one way so it is not
+                self.io.click(*geo.raw(*(sorter.WP_PREV if tab == 0 else sorter.WP_NEXT)))
+                self.wp_tab_tries += 1                    # (the count goes on: the arrows are tried twice)
+                self.log("웨이포인트: %d번째 탭이 안 열려 %s 화살표로 탭 줄을 넘김" % (tab + 1, "이전" if tab == 0 else "다음"))
+                return True
+            if self.wp_tab_tries > 6 and getattr(self, "wp_fr_fail", 0) >= 2 and lit_rng and lit_rng[1] < stage:
+                # neither the stage's tab nor the newest stage works: the highest stage of the open tab
+                r_ = lit_rng[1] - lit_rng[0]
+                if r_ < len(rows) and rows[r_][1] >= 0.6:
+                    self.wp_tab_tries = 0
+                    self.wp_list_tab = None
+                    self.io.click(*geo.raw(sorter.WP_X, sorter.WP_LIST_ROW1 + sorter.WP_LIST_PITCH * r_))
+                    self.log("웨이포인트: %d단계 탭도 새 단계도 안 열려 임시로 공포 영역 %d 시작 (열린 탭 %d~%d) "
+                             "- 단계 목록 화면을 캡처해 보내 주세요" % (stage, lit_rng[1], lit_rng[0], lit_rng[1]))
+                    return True
             if self.wp_tab_tries > 6:
                 self.wp_tab_tries = 0
                 self.wp_list_tab = None
@@ -865,8 +893,10 @@ class Picker:
                              "(단계 목록 화면을 캡처해 보내 주세요)" % (stage, tab * per + 1, tab * per + per))
                     return True
                 self.io.key(Key.esc)
-                self.log("웨이포인트: %d~%d단계 탭이 열리지 않음 (열린 탭: %s) - 목록을 닫고 다시"
-                         % (tab * per + 1, tab * per + per, "모름" if lit is None else "%d~%d" % (lit * per + 1, lit * per + per)))
+                self.log("웨이포인트: %s단계 탭이 열리지 않음 (열린 탭: %s, 탭 글자: %s) - 목록을 닫고 다시"
+                         % ("%d~%d" % rng[tab] if known and rng[tab] else "%d~%d" % (tab * per + 1, tab * per + per),
+                            "모름" if lit is None else "%d번째%s" % (lit + 1, " %d~%d" % lit_rng if lit_rng else ""),
+                            " ".join("%d~%d" % r if r else "?" for r in rng)))
                 return True
             self.io.click(*geo.raw(sorter.WP_TAB1 + sorter.WP_TAB_PITCH * tab, sorter.WP_TAB_Y))
             if known and rng[tab]:
@@ -912,6 +942,8 @@ class Picker:
             return
         if now - self.terror_last < 3:
             self.town_since = self.other_since = None
+            self.state["town_stuck_since"] = None
+            self.wp_fr_fail = 0
             return
         if not self.run_text:
             self.other_since = None
@@ -926,6 +958,8 @@ class Picker:
         if self.town_since is None:
             self.town_since = now
             self.wp_walks = 0
+        if not self.state.get("town_stuck_since"):
+            self.state["town_stuck_since"] = now         # (main: a phone alarm after 5 minutes in town)
         if self.state.get("ess_check") and not self.state.get("town_tidy"):
             self.state["town_tidy"] = now                # '정수 개수 확인': the stash chest first
             self.log("[정수 확인] 마을 도착: 보관함에서 정수 개수를 셈")
