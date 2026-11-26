@@ -1387,18 +1387,22 @@ def sell_cells(io, cells, base_dir, log):
 
 
 RARE_SKILL_MAYBE = 0.5     # '기술' picture this good on a rare's line and no OCR to settle it: kept, not sold
+RARE_SKILL_SURE = 0.8      # ... and this good: kept even when the OCR found no '기술' (it may have misread it)
 
 
 def rare_has_skill(ev):
-    """A skill line on this rare by the Windows OCR (when it was read) or by the '기술' picture; only other
-    classes' skills (OCR text) do not count."""
+    """A skill line on this rare: the Windows OCR decides when it read the box (a mask with no skill line went
+    to the stash as '레어 기술' on the '기술' picture alone); the picture only when there was no OCR.
+    Only other classes' skills do not count."""
     if ev.get("rare_skill_other") or ev.get("rare_ocr_other"):
         return False
-    if ev.get("rare_ocr") == "skill" or ev.get("rare_skill"):
+    sc = ev.get("rare_skill_score") or 0.0
+    ocr = ev.get("rare_ocr")
+    if ocr == "skill":
         return True
-    if ev.get("rare_ocr") is None and (ev.get("rare_skill_score") or 0.0) >= RARE_SKILL_MAYBE:
-        return True
-    return False
+    if ocr == "none":
+        return sc >= RARE_SKILL_SURE
+    return bool(ev.get("rare_skill")) or sc >= RARE_SKILL_MAYBE
 
 
 def tidy_in_inventory(io, opts, base_dir, log, stop=None):
@@ -1908,7 +1912,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     rare_q = []                                 # rares to be sold: their skill lines read by OCR first
 
     def ocr_first(cell, ev, d):
-        return (d == "sell" and ev and ev.get("color") == "yellow" and ev.get("rare_ocr") is None
+        # rares to be sold, and rares kept for a skill line seen only in the '기술' picture: OCR settles both
+        return ((d == "sell" or (d == "keep" and str(ev.get("kind") or "").startswith("레어 기술")))
+                and ev and ev.get("color") == "yellow" and ev.get("rare_ocr") is None
                 and PLAY.get("rare_skill", True) and cell in footprint and tip_of.get(cell) is not None
                 and os.name == "nt" and namer._now_ok[0] is not False)
 
@@ -1917,7 +1923,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if cell in footprint and d not in ("hold",):
             log("  칸 %d,%d %s: %s" % (cell[0] + 1, cell[1] + 1, title(ev) if ev else "?", why(ev, d)))
         if ocr_first(cell, ev, d):
-            rare_q.append((cell, ev))           # sold after the OCR check below (one OCR run for all of them)
+            rare_q.append((cell, ev, d))        # decided after the OCR check below (one OCR run for all of them)
         elif d == "sell" and (inv_only or view_only):
             sell_here(cell, ev, d)              # decided at the first look: sold right away
         if d not in ("hold", "essence"):
@@ -1938,30 +1944,38 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     walk(survey)
     if rare_q and not stop.is_set():
         t0 = time.time()
-        got = namer.ocr_now([tip_of.get(c_) for c_, _ in rare_q])
+        got = namer.ocr_now([tip_of.get(q_[0]) for q_ in rare_q])
         if got is None:
             log("레어 %d개: 윈도우 글자 인식을 못 써서 '기술' 그림으로만 판단 (애매하면 보관)" % len(rare_q))
-            for _c, ev_ in rare_q:
+            for _c, ev_, _d in rare_q:
                 ev_["rare_ocr"] = "na"
         else:
-            kept_ = []
-            for (c_, ev_), lines in zip(rare_q, got):
-                if not lines:
-                    ev_["rare_ocr"] = "na"                   # unread: the picture rule decides
+            kept_, dropped_ = [], []
+            for (c_, ev_, d0), lines in zip(rare_q, got):
+                if len(lines) < 4:
+                    ev_["rare_ocr"] = "na"                   # (hardly read: the picture rule decides)
                     continue
                 has, other = scorer.skill_text(lines)
                 ev_["rare_ocr"] = "skill" if has else "none"
                 ev_["rare_ocr_other"] = other
                 if has:
                     ev_["rare_ocr_line"] = next((t for t in lines[2:] if scorer.SKILL_RE.search(t)), "")
-                if decide(ev_, c_) != "sell":
-                    kept_.append("%s (%s)" % (lines[0] if lines else title(ev_), ev_.get("rare_ocr_line") or "?"))
-                    plan["sell"] = plan.get("sell", 1) - 1
-                    plan["keep"] = plan.get("keep", 0) + 1
-            log("레어 %d개 기술 줄 확인 (윈도우 글자 인식 %.1f초): %s" % (
-                len(rare_q), time.time() - t0, ("보관 " + ", ".join(kept_)) if kept_ else "기술 붙은 것 없음 -> 판매"))
+                if not rare_has_skill(ev_) and str(ev_.get("kind") or "").startswith("레어 기술"):
+                    ev_["kind"] = ""                        # (decide() named it for the skill rule)
+                d1 = decide(ev_, c_)
+                if d1 != d0:
+                    plan[d0] = max(0, plan.get(d0, 1) - 1)
+                    plan[d1] = plan.get(d1, 0) + 1
+                nm_ = lines[0] if lines else title(ev_)
+                if d1 != "sell" and d0 == "sell":
+                    kept_.append("%s (%s)" % (nm_, ev_.get("rare_ocr_line") or "?"))
+                elif d1 == "sell" and d0 != "sell":
+                    dropped_.append(nm_)
+            log("레어 %d개 기술 줄 확인 (윈도우 글자 인식 %.1f초)%s%s" % (
+                len(rare_q), time.time() - t0, (" · 보관: " + ", ".join(kept_)) if kept_ else "",
+                (" · '기술' 그림만 비슷했고 기술 줄 없음 -> 판매: " + ", ".join(dropped_)) if dropped_ else ""))
         if inv_only or view_only:
-            for c_, ev_ in rare_q:
+            for c_, ev_, _d in rare_q:
                 d_ = decide(ev_, c_)
                 if d_ == "sell":
                     sell_here(c_, ev_, d_)
