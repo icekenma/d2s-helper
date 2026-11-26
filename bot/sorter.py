@@ -1297,7 +1297,9 @@ def record_item(base_dir, action, ev, tip, tab="", only_actions=False, got=False
                 line["why"] = w_
         if got:
             line["got"] = True                     # picked up in this run (not in the bags at the last tidy-up)
-        if tip is not None and ev.get("kind") == "주얼":
+        if ev.get("color") == "yellow" and ev.get("rare_skill_score") is not None:
+            line["sk"] = round(float(ev["rare_skill_score"]), 2)     # the '기술' picture score (to tune the line)
+        if tip is not None and (ev.get("kind") == "주얼" or ev.get("color") == "yellow"):
             # a lossless copy of every jewel's info box: the pictures to teach the helper '피해 증가' from
             try:
                 pd = os.path.join(d, "png")
@@ -1687,6 +1689,14 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
     def title(ev):
         return ev["name"] or ev["raw"] or ev["kind"] or ev["quality"]
 
+    def rare_fits(cell):
+        """Picture only (no OCR): a skill line is believed on what can carry an Amazon skill - an amulet (1x1)
+        or gloves / a circlet (2x2) - and not on armour, belts, shields or weapons (2x1, 2x3, 2x4 ...)."""
+        cells = footprint.get(cell, []) if cell is not None else []
+        if not cells:
+            return True
+        return (len({c for c, r in cells}), len({r for c, r in cells})) in ((1, 1), (2, 2))
+
     def decide(ev, cell=None):
         # essences: never sold; a stack stays in the bags until it holds ESSENCE_HOLD (90), then to the stash.
         # Known by the cell picture even when the info box was not read, or by the box (name / stack count).
@@ -1720,7 +1730,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             ev["kind"] = "레어 " + ev["quiver"]
             return "keep"                       # rare arrows / bolts: collected, to the stash (the user's rule)
         if ev["color"] == "yellow" and ev.get("kind") not in ("주얼", "정수", "열쇠") and not ev.get("charm") \
-                and PLAY.get("rare_skill", True) and rare_has_skill(ev) and not (rare_weapon(ev, cell) and not PLAY.get("rare_bow")):
+                and PLAY.get("rare_skill", True) and rare_has_skill(ev) and not (rare_weapon(ev, cell) and not PLAY.get("rare_bow")) \
+                and (ev.get("rare_ocr") == "skill" or rare_fits(cell)):
             # a rare with a skill line, like the rankers' amulets (+16~18 아마존 기술), gloves (+3 활과 석궁
             # 기술) and circlets. Any size: the block read from the bag colours can take in a neighbour,
             # and a keeper sold for that is lost for good (a +3 bow-skill glove went that way)
@@ -1877,6 +1888,9 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         bits = [ev.get("quality") or ev.get("color") or "?"]
         if ev.get("req"):
             bits.append("필요 레벨 %d" % ev["req"])
+        if ev.get("color") == "yellow" and ev.get("rare_skill_score") is not None:
+            bits.append("기술 그림 %.2f%s" % (ev["rare_skill_score"], {"skill": " · 글자: 기술 있음", "none": " · 글자: 기술 없음"}
+                                          .get(ev.get("rare_ocr"), "")))
         if ev.get("ed"):
             bits.append("증뎀")
         if ev.get("uncollected"):
