@@ -1468,9 +1468,11 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         return "자동 정리 중단", False
     if probe and plan.get("leave") and not io.front():
         return NEED_FRONT, False                # info boxes missing: the game is behind other windows
-    if view_only:
+    if view_only and not plan.get("sell"):
         snap("지금 읽음")
-        return "지금 인벤토리 읽음: 아이템 %d개" % len(footprint), True
+        return "지금 인벤토리 읽음: 아이템 %d개 (판매할 것 없음)" % len(footprint), True
+    if view_only:
+        inv_only = True                         # something to sell: sold right here, as in the bags tidy-up
     if ess_bad:
         log("불타는 정수 묶음 %d개의 수량을 읽지 못함: 이번 판 정수 개수는 세지 않음" % len(ess_bad))
     else:

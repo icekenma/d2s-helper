@@ -1535,12 +1535,26 @@ class Picker:
             if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
                 norm = geo.normalize(f)
                 break
+        base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+        others = 0
         if norm is not None:
             self.io.move(*geo.raw(*sorter.PARK))
             time.sleep(0.12)
             f = self.io.grab()
             if f is not None:
                 norm = geo.normalize(f)
+            inv = sorter.read_inventory(norm)
+            others = sum(1 for r_, row in enumerate(inv) for c_, v in enumerate(row)
+                         if v and not sorter.essence_cell(norm, c_, r_, base))
+        if norm is not None and others and self.opts.get("auto_clean", True):
+            # something besides essences in the bags: the window is open anyway, so what the rules sell
+            # (set items, spare rares ...) is sold right here; the essences are counted on the way
+            try:
+                text, _, _ = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
+                self.log("패스트 모드: " + text)
+            except Exception as e:
+                self.log("패스트 모드: 인벤토리 정리 오류: %s" % e)
+        elif norm is not None:
             snap, bad = sorter.read_burning(self.io, geo, norm, os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__))))
             if bad:
                 self.log("패스트 모드: 불타는 정수 묶음 %d개의 수량을 읽지 못함 (게임 창이 뒤에 있으면 정보창이 안 뜸)" % bad)
@@ -1718,6 +1732,14 @@ class Picker:
                 if self.inv_open_since is None:
                     self.inv_open_since = now
                 elif now - self.inv_open_since > 2.5:
+                    if self.opts.get("auto_clean", True):
+                        # the bags are open anyway: sell what the rules sell before closing them
+                        base = os.path.dirname(os.path.dirname(os.path.abspath(sorter.__file__)))
+                        try:
+                            text, _, _ = sorter.tidy_in_inventory(self.io, self.opts.get("sort") or {}, base, self.log)
+                            self.log("열려 있던 인벤토리: " + text)
+                        except Exception as e:
+                            self.log("열려 있던 인벤토리 정리 오류: %s" % e)
                     self.io.key(Key.esc)
                     self.inv_open_since = None
                     self.log("열려 있던 인벤토리 창을 닫음")
