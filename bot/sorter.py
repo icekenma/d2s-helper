@@ -534,10 +534,21 @@ def tooltip_crop(base, hover, geo):
     boxes = [stats[i] for i in range(1, n) if stats[i][4] >= (18 * geo.s) ** 2]
     if not boxes:
         return None
-    x = min(b[0] for b in boxes)
-    y = min(b[1] for b in boxes)
-    x2 = max(b[0] + b[2] for b in boxes)
-    y2 = max(b[1] + b[3] for b in boxes)
+    # the info box is the biggest change; other changes far from it (the character panel's numbers
+    # moving in a fight, the world behind) are not part of it. Pieces touching it are (a split box).
+    main = max(boxes, key=lambda b: b[4])
+    x, y, x2, y2 = main[0], main[1], main[0] + main[2], main[1] + main[3]
+    pad = 12 * geo.s
+    rest = [b for b in boxes if b is not main]
+    grew = True
+    while grew:
+        grew = False
+        for b in list(rest):
+            if b[0] <= x2 + pad and b[0] + b[2] >= x - pad and b[1] <= y2 + pad and b[1] + b[3] >= y - pad:
+                x, y = min(x, b[0]), min(y, b[1])
+                x2, y2 = max(x2, b[0] + b[2]), max(y2, b[1] + b[3])
+                rest.remove(b)
+                grew = True
     if x2 - x < 70 * geo.s or y2 - y < 28 * geo.s:
         return None
     p = int(3 * geo.s)
@@ -1057,6 +1068,74 @@ def record_item(base_dir, action, ev, tip, tab="", only_actions=False, got=False
 
 
 NEED_FRONT = "__need_front__"
+
+
+def sell_cells(io, cells, base_dir, log):
+    """The phone's '판매 예약': with the bags open, Shift+click each asked-for item (top-left cell) to sell
+    it. An essence is never sold, and an item whose picture is not the one read before (it moved, or
+    something else is there now) is left alone. -> number sold."""
+    f = io.grab()
+    if f is None:
+        return 0
+    geo = Geo(f)
+    if seen(geo.normalize(f), "inv") < 0.7:
+        log("판매 예약: 인벤토리가 열려 있지 않음")
+        return 0
+    sold = 0
+    for c, r, name in cells:
+        if not (0 <= c < INV_COLS and 0 <= r < INV_ROWS):
+            continue
+        _park(io, geo)
+        f = io.grab()
+        if f is None:
+            break
+        n = geo.normalize(f)
+        label = name or "%d열 %d줄 아이템" % (c + 1, r + 1)
+        if not read_inventory(n)[r][c]:
+            log("판매 예약: %s - 그 칸이 비어 있음 (이미 없어짐)" % label)
+            continue
+        if essence_cell(n, c, r, base_dir):
+            log("판매 예약: %s - 정수 그림이라 판매하지 않음" % label)
+            continue
+        seen_ = _SEEN.get((c, r))
+        if seen_ is not None and seen_[0] != _fingerprint(n, c, r):
+            log("판매 예약: %s - 그 칸의 아이템이 바뀌어 판매하지 않음 ('지금 읽기'로 다시 확인)" % label)
+            continue
+        y = PARK[1]
+        before = n[y - 20:y + 20, PARK[0] - 30:PARK[0] + 30].astype(np.int16)
+        io.click(*geo.raw(*cell_center(c, r)), mod="shift")
+        time.sleep(0.45)
+        _park(io, geo)
+        f = io.grab()
+        if f is None:
+            break
+        n2 = geo.normalize(f)
+        after = n2[y - 20:y + 20, PARK[0] - 30:PARK[0] + 30].astype(np.int16)
+        if float(np.abs(after - before).mean()) > 14.0:
+            # Shift did not reach the game: the item is on the cursor. Put it straight back and stop.
+            io.click(*geo.raw(*cell_center(c, r)))
+            time.sleep(0.4)
+            log("판매 예약: Shift+클릭이 안 먹어 아이템이 마우스에 들림 -> 제자리에 되돌리고 멈춤")
+            break
+        if read_inventory(n2)[r][c]:
+            log("판매 예약: %s - Shift+클릭했지만 칸이 비지 않음" % label)
+            continue
+        sold += 1
+        ev = seen_[1] if seen_ is not None else {"name": name}
+        record_item(base_dir, "판매", ev, seen_[2] if seen_ is not None else None, only_actions=True)
+        _SEEN.pop((c, r), None)
+        log("판매 예약: %s 판매함 (인벤토리에서 Shift+클릭)" % label)
+        try:
+            with open(paths.p("inv_now.json"), "r", encoding="utf-8") as fh:
+                snap = json.load(fh)
+            snap["items"] = [it for it in snap.get("items", []) if not (it.get("c") == c and it.get("r") == r)]
+            if snap.get("free") is not None:
+                snap["free"] = sum(1 for row in read_inventory(n2) for v in row if not v)
+            with open(paths.p("inv_now.json"), "w", encoding="utf-8") as fh:
+                json.dump(snap, fh, ensure_ascii=False)
+        except (OSError, ValueError):
+            pass
+    return sold
 
 
 def tidy_in_inventory(io, opts, base_dir, log, stop=None):

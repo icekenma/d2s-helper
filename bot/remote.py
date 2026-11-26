@@ -476,6 +476,17 @@ class Remote:
                     d["now"] = time.time()
                     return self._send(200, json.dumps(d, ensure_ascii=False).encode("utf-8"),
                                       "application/json; charset=utf-8")
+                if u.path == "/api/sellnow" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 1024)) or b"{}")
+                        d = {"c": int(d["c"]), "r": int(d["r"]), "name": str(d.get("name") or "")[:40]}
+                    except Exception:
+                        return self._send(400, b'{"error":"sell"}', "application/json")
+                    cb = getattr(remote, "sell_now", None)
+                    if cb:
+                        cb(d)
+                    return self._send(200, json.dumps(d, ensure_ascii=False).encode("utf-8"), "application/json")
                 if u.path == "/api/invview" and method == "POST":
                     cb = getattr(remote, "inv_view", None)
                     if cb:

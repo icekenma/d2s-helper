@@ -1338,6 +1338,39 @@ class Picker:
             self.log("[3단계] 클릭 못 함: 게임 위에 창이 열려 있음")
         return True
 
+    def _with_bags(self, fn, what):
+        """Open the inventory (if it is not), run fn, close it again."""
+        frame = self.io.grab()
+        if frame is None:
+            return
+        geo = sorter.Geo(frame)
+        opened = False
+        if sorter.seen(geo.normalize(frame), "inv") < 0.7:
+            self.io.key("c")
+            opened = True
+        ok = False
+        for _ in range(8):
+            time.sleep(0.15)
+            f = self.io.grab()
+            if f is not None and sorter.seen(geo.normalize(f), "inv") >= 0.7:
+                ok = True
+                break
+        if ok:
+            try:
+                fn()
+            except Exception as e:
+                self.log("[%s] 오류: %s" % (what, e))
+        else:
+            self.log("[%s] 인벤토리를 열지 못함" % what)
+        if opened or ok:
+            self.io.key("c")
+            time.sleep(0.3)
+            f = self.io.grab()
+            if f is not None and sorter.seen(sorter.Geo(f).normalize(f), "inv") >= 0.7:
+                self.io.key(Key.esc)
+                time.sleep(0.2)
+        self.frame = None
+
     def _inv_view(self):
         """Read the bags for the phone (sorter mode 'view': hover each item, move nothing)."""
         frame = self.io.grab()
@@ -2032,6 +2065,13 @@ class Picker:
                     return
                 self.tidy_seen = tn
                 self.log("[즉시 정리] 마을로 나가지 못함 (6번): 판이 끝나면 마을 창고에서 정리")
+        if self.state.get("sell_req") and (not self.busy or now - self.state.get("sell_at", now) > 20):
+            # the phone's '판매 예약': open the bags, Shift+click those items, close them
+            reqs, self.state["sell_req"] = list(self.state["sell_req"]), []
+            self.release()
+            self._with_bags(lambda: sorter.sell_cells(self.io, reqs, os.path.dirname(os.path.dirname(
+                os.path.abspath(sorter.__file__))), self.log), "판매 예약")
+            return
         iv = self.state.get("inv_view", 0) or 0
         if iv > self.view_seen and (not self.busy or now - iv > 20):
             # the phone's '지금 읽기': open the bags, read every item (nothing is moved), close them

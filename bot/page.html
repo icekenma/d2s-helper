@@ -470,6 +470,10 @@ summary::-webkit-details-marker{display:none}
 .sbox dl{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;margin:16px 0 0;font-size:14px}
 .sbox dt{color:var(--ash)}
 .sbox dd{margin:0;font-weight:600}
+.ssell{display:block;width:100%;margin-top:16px;border:0;border-radius:14px;padding:13px 16px;text-align:left;font:inherit;
+ font-size:16px;font-weight:800;color:#fff;background:linear-gradient(160deg,#8a2a22,#5a1a15);box-shadow:inset 0 0 0 1px var(--blood2)}
+.ssell small{display:block;margin-top:3px;font-size:12.5px;font-weight:500;color:#f1c9c2}
+.ssell:disabled{opacity:.7}
 .stip{display:block;width:100%;margin-top:16px;border-radius:10px;box-shadow:0 0 0 1px var(--edge2)}
 .snone{margin:16px 0 0;padding:14px;border-radius:12px;font-size:13.5px;line-height:1.5;color:var(--ash);background:var(--abyss);box-shadow:inset 0 0 0 1px var(--edge)}
 .snone b{color:var(--bone)}
@@ -966,8 +970,17 @@ function invSheet(x,d){
  var z=document.createElement("div");z.className="sheet";z.setAttribute("role","dialog");z.setAttribute("aria-label",invName(x));
  z.innerHTML='<div class="sbox" style="--c:'+t[1]+'"><div class="shd">'+pic+'<div><b class="q-'+(x.color||"")+'">'+esc(invName(x))+'</b><span class="tg">'+esc(t[0])+'</span></div>'+
   '<button type="button" class="sx" aria-label="닫기">✕</button></div><dl>'+rows.map(function(r){return "<dt>"+r[0]+"</dt><dd>"+esc(String(r[1]))+"</dd>"}).join("")+"</dl>"+
+  (x.essence||x.burn?'<p class="snone">정수는 판매하지 않습니다.</p>':'<button type="button" class="ssell" id="sSell">판매 예약<small>바로 인벤토리를 열어 이 아이템을 판매</small></button>')+
   (x.img?'<img class="stip" src="/invnow/'+x.img+'" alt="'+esc(invName(x))+' 정보창">':'<p class="snone">'+(x.read?"이 아이템은 정보창 사진이 남지 않았습니다.":"이 아이템은 정보창을 읽지 못했습니다.")+' <b>지금 읽기</b>를 누르면 다시 읽습니다.</p>')+"</div>";
  z.onclick=function(e){if(e.target===z||e.target.className==="sx")z.remove()};document.body.appendChild(z);
+ var sb=z.querySelector("#sSell");
+ if(sb)sb.onclick=function(){
+  var warn=x.pick?"\n\n'무조건 보관'으로 고른 아이템입니다.":x.uncollected?"\n\n수집품에 없는 아이템입니다 (등록하지 않고 판매).":x.forged?"\n\n강화한 아이템입니다.":"";
+  if(!confirm(invName(x)+"을(를) 지금 판매할까요?"+warn))return;
+  sb.disabled=true;sb.innerHTML="판매 요청함<small>인벤토리를 열어 판매하는 중 · 몇 초 뒤 목록이 바뀝니다</small>";
+  post("/api/sellnow",{c:x.c,r:x.r,name:invName(x)}).then(function(){
+   var n=0;(function poll(){loadInv();if(++n<6)setTimeout(poll,2000)})();
+   setTimeout(function(){z.remove()},2500)}).catch(function(){sb.disabled=false;sb.innerHTML="보내지 못함 · 다시 누르기<small>PC와 연결을 확인하세요</small>"})};
 }
 $("invRead").onclick=function(){var b=$("invRead");b.disabled=true;b.textContent="읽는 중";invAsk=Date.now()/1000;
  post("/api/invview").catch(function(){});

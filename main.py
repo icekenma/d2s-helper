@@ -465,6 +465,45 @@ class App(tk.Tk):
                 self.viewing = False
         threading.Thread(target=work, daemon=True).start()
 
+    def _sell_now(self, d, who="휴대폰"):
+        """'판매 예약' from an item's detail sheet: sell that item from the bags right away."""
+        try:
+            req = (int(d["c"]), int(d["r"]), str(d.get("name") or "")[:40])
+        except (KeyError, TypeError, ValueError):
+            return
+        self._say("%s에서 판매 예약: %s (%d열 %d줄)" % (who, req[2] or "아이템", req[0] + 1, req[1] + 1))
+        if self.engine is not None:
+            self.engine.state.setdefault("sell_req", []).append(req)
+            self.engine.state["sell_at"] = time.time()
+            return
+
+        def work():
+            from bot.gameio import GameIO
+            if not self.io_lock.acquire(timeout=10):
+                self.q.put(("log", "판매 예약: 다른 작업 중이라 못 함"))
+                return
+            io = GameIO(TITLE)
+            log = lambda m: self.q.put(("log", m))
+            try:
+                f = io.grab()
+                if f is None:
+                    log("판매 예약: 게임 창을 찾지 못함")
+                    return
+                opened = sorter.seen(sorter.Geo(f).normalize(f), "inv") < 0.7
+                if opened:
+                    io.key("c")
+                    time.sleep(0.8)
+                sorter.sell_cells(io, [req], BASE, log)
+                if opened:
+                    io.key("c")
+                    time.sleep(0.3)
+            except Exception as e:
+                log("판매 예약 오류: %s" % e)
+            finally:
+                io.close()
+                self.io_lock.release()
+        threading.Thread(target=work, daemon=True).start()
+
     def _tidy_now(self, who="휴대폰"):
         """'인벤토리 즉시 정리': out of the stage now, the stash in town, then on hunting."""
         if self.engine is None:
@@ -802,6 +841,7 @@ class App(tk.Tk):
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
             self.remote.inv_view = lambda: self.q.put(("inv_view", None))
+            self.remote.sell_now = lambda d: self.q.put(("sell_now", d))
             self.remote.note = lambda m: self.q.put(("log", m))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
@@ -936,6 +976,8 @@ class App(tk.Tk):
                     self._tidy_now()
                 elif kind == "inv_view":
                     self._inv_view()
+                elif kind == "sell_now":
+                    self._sell_now(p)
                 elif kind == "alert_test":
                     self.watch.test()
                 elif kind == "keep_star":
