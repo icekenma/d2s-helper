@@ -1314,14 +1314,16 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             # rares: only an Amazon bow / crossbow needing level 60 or more goes to the stash
             cells = footprint.get(cell, []) if cell is not None else []
             wide = len({c for c, r in cells}) == 2 and len({r for c, r in cells}) in (3, 4)
-            bowish = ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55 or (wide and (ev.get("bow") or 0) >= 0.35)
+            bowish = ev.get("bow_text") or (ev.get("bow") or 0) >= 0.55 or (wide and (ev.get("bow") or 0) >= 0.5)
             req = ev.get("req")
             if PLAY.get("rare_bow", True) and bowish and (req is None or req >= RARE_BOW_LEVEL):
                 ev["kind"] = "레어 활 (필요 레벨 %s)" % (req if req is not None else "?")
                 return "keep"
             return "sell"
+        if ev.get("kind") == "주얼" and not ev.get("ed"):
+            return "sell"                       # jewels: only '피해 증가' ones are kept (the user's rule)
         if ev["keep"]:
-            return "essence"                    # essences, jewels, small charms, skill grand charms
+            return "essence"                    # essences, ED jewels, small charms, skill grand charms
         if ev["color"] in ("gold", "green"):
             if ev.get("charm"):
                 return "keep"                   # unique charms are kept even when one is registered
@@ -1329,11 +1331,8 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
                 # the game itself says '수집품에 없음' (purple): register it (one try per item)
                 return "register" if tries.get(ev["name"] or ("?", cell), 0) < 1 else "keep"
             if "uncollected" in ev:
-                if not ev.get("stored_seen"):
-                    # neither '수집품에 없음' nor '이미 하나를 보관했습니다' could be seen: never sold on a guess
-                    ev["kind"] = (ev.get("kind") or "유니크") + " (수집 여부 모름)"
-                    return "keep"
-                # '이미 하나를 보관했습니다': already in the collection -> a spare (a better roll may swap in)
+                # no '수집품에 없음' (purple) under the name: already in the collection -> a spare, sold
+                # (the user's rule). Before the sale the info box is read a second time (sell_here).
                 sc, old = ev["score"], registry.get(ev["name"]) if ev["name"] else None
                 if swap_better and ev["name"] and sc is not None and tries.get(ev["name"], 0) < 3 and (old is None or sc > old):
                     return "swap"
@@ -1446,8 +1445,27 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
 
     ess_snap, ess_out, ess_bad = {}, set(), []
 
+    def why(ev, d):
+        if not ev:
+            return "정보창을 못 읽음 -> 그대로 둠"
+        bits = [ev.get("quality") or ev.get("color") or "?"]
+        if ev.get("req"):
+            bits.append("필요 레벨 %d" % ev["req"])
+        if ev.get("ed"):
+            bits.append("증뎀")
+        if ev.get("uncollected"):
+            bits.append("수집품에 없음")
+        if ev.get("keep_name"):
+            bits.append("무조건 보관으로 고른 것")
+        if ev.get("forged"):
+            bits.append("강화됨")
+        return "%s -> %s" % (", ".join(bits), {"sell": "판매", "register": "등록", "swap": "교체", "keep": "보관",
+                                                "essence": "보관함", "hold": "정수 둠", "leave": "그대로 둠"}.get(d, d))
+
     def survey(cell, ev, d):
         plan[d] = plan.get(d, 0) + 1
+        if cell in footprint and d not in ("hold",):
+            log("  칸 %d,%d %s: %s" % (cell[0] + 1, cell[1] + 1, title(ev) if ev else "?", why(ev, d)))
         if d not in ("hold", "essence"):
             return
         nm = (ev.get("name") or ev.get("raw") or "") if ev else ""
@@ -1492,13 +1510,18 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             return k is not None and not _key_in(k, held_before)
         # sell right here (Shift+click in the bags); only registering / the stash need the smith
         log("인벤토리 정리 계획: %s" % (", ".join("%s %d" % ({"sell": "판매", "register": "등록", "swap": "교체",
-                                                          "keep": "보관 목록", "essence": "보관함", "hold": "정수 둠",
+                                                          "keep": "보관", "essence": "보관함", "hold": "정수 둠",
                                                           "leave": "그대로/보관함"}.get(k, k), v)
                                               for k, v in plan.items()) or "없음"))
         if plan.get("sell") and not stop.is_set():
             def sell_here(cell, ev, d):
                 if d != "sell":
                     return
+                if ev and ev.get("color") in ("gold", "green") and not (ev["color"] == "green" and PLAY.get("sell_sets", True)):
+                    ev2 = inspect(cell, fresh=True)    # a unique: look once more for '수집품에 없음' before selling
+                    if not ev2 or ev2.get("uncollected") or decide(ev2, cell) != "sell":
+                        log("%s: 다시 보니 판매 대상이 아님 (%s)" % (title(ev), why(ev2, decide(ev2, cell) if ev2 else "leave")))
+                        return
                 n_ = norm_now()                 # last look right before selling: an essence is never sold
                 if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
                     log("칸 %d,%d는 정수 그림이라 판매하지 않음" % (cell[0] + 1, cell[1] + 1))
@@ -1539,7 +1562,7 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
         if n9 is not None:
             need["free"] = sum(1 for row in read_inventory(n9) for v in row if not v)
         return "인벤토리 정리: 판매 %d%s" % (count["sell"], (" - 대장장이가 필요한 것: " + ", ".join(
-            "%s %d" % ({"register": "등록", "swap": "교체", "keep": "보관 목록", "essence": "보관함",
+            "%s %d" % ({"register": "등록", "swap": "교체", "keep": "보관", "essence": "보관함",
                         "leave": "읽지 못함/강화"}[k], v) for k, v in npc.items())) if npc else " - 대장장이 필요 없음"), True
 
     # 1) collection tab: register new ones, try a swap when this copy may be better
@@ -1664,6 +1687,12 @@ def _cleanup(io, opts, base_dir, log, stop, probe=False, mode="smith", need=None
             log("찰시 판매 화면을 확인하지 못해 판매를 건너뜀")
         else:
             def sell(cell, ev, d):
+                if d == "sell" and ev and ev.get("color") in ("gold", "green") \
+                        and not (ev["color"] == "green" and PLAY.get("sell_sets", True)):
+                    ev2 = inspect(cell, fresh=True)    # a unique: look once more for '수집품에 없음' before selling
+                    if not ev2 or ev2.get("uncollected") or decide(ev2, cell) != "sell":
+                        log("%s: 다시 보니 판매 대상이 아님" % title(ev))
+                        return
                 if d == "sell":
                     n_ = norm_now()             # last look right before selling: an essence is never sold
                     if n_ is None or essence_cell(n_, cell[0], cell[1], base_dir):
