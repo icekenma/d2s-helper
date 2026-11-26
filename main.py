@@ -244,6 +244,7 @@ class App(tk.Tk):
         ttk.Button(rb, text="기록 폴더 열기", command=self._open_records).pack(side="right")
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="진행 상황", command=self._open_runs).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="인벤토리 즉시 정리", command=lambda: self._tidy_now("PC")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
@@ -404,6 +405,16 @@ class App(tk.Tk):
         self._say("%s에서 판 시간 제한 변경: 일반 %s, 패스트 %s (다음 판부터)" % (
             who, limit_text(ls["limit_normal"]), limit_text(ls["limit_fast"])))
         self._share()
+
+    def _tidy_now(self, who="휴대폰"):
+        """'인벤토리 즉시 정리': out of the stage now, the stash in town, then on hunting."""
+        if self.engine is None:
+            self._say("%s에서 인벤토리 즉시 정리: 도우미가 멈춰 있음 (시작한 뒤에 누르세요)" % who)
+            return
+        now = time.time()
+        self.engine.state["town_tidy"] = now
+        self.engine.state["tidy_now"] = now
+        self._say("%s에서 인벤토리 즉시 정리: 지금 마을로 가서 창고 정리 후 사냥을 이어감" % who)
 
     def _set_alert(self, changes, who="휴대폰"):
         c = self.watch.conf
@@ -694,6 +705,7 @@ class App(tk.Tk):
             self.remote.set_fast_ext = lambda d: self.q.put(("fast_ext", d))
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
+            self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
             self.remote.test_alert = lambda: self.q.put(("alert_test", None))
             self.remote.start()
             self._show_url()
@@ -820,6 +832,8 @@ class App(tk.Tk):
                     self._set_alert(p)
                 elif kind == "limits":
                     self._set_limits(p)
+                elif kind == "tidy_now":
+                    self._tidy_now()
                 elif kind == "alert_test":
                     self.watch.test()
                 elif kind == "keep_star":

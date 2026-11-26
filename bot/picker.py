@@ -443,6 +443,7 @@ class Picker:
         self.g_portal, self.g_n, self.g_chests, self.g_chest_note = False, 0, 0, False
         self.g_full_at = 0.0
         self.tt_since, self.tt_clicks, self.tt_click_at, self.tt_scan = None, 0, 0.0, None
+        self.tidy_seen = float(self.state.get("tidy_now", 0) or 0)
         # mouse walking
         self.ratio = 20.5           # screen pixels per minimap pixel (learnt while walking)
         self.click_at, self.click_me, self.click_d, self.clamped = 0.0, None, None, True
@@ -1427,6 +1428,8 @@ class Picker:
             self.state["town_check"] = time.time() + 40
             self.frame = None
             self.log("마을로 나감: 저장 후 나가기 (다음 판)")
+            if (self.state.get("tidy_now", 0) or 0) > self.tidy_seen:
+                self.tidy_seen = self.state["tidy_now"]   # the immediate tidy-up: town step takes over
             self._new_run()                       # the next run starts clean (tries, act check, flags)
             return
         self.frame = None
@@ -1798,6 +1801,19 @@ class Picker:
             return
         if self._watchdog(now):
             return
+        tn = self.state.get("tidy_now", 0) or 0
+        if tn > self.tidy_seen:
+            # '인벤토리 즉시 정리': leave the stage at once (Esc -> 저장 후 나가기); the stash tidy-up runs in
+            # town (town_tidy is booked with it), then the waypoint and on hunting
+            if not self.run_text:
+                self.tidy_seen = tn                      # already in town: the town step does it
+            else:
+                self.release()
+                if self.exit_tries < 6:
+                    self._exit_town(now, "[즉시 정리] 사냥을 멈추고 Esc -> 저장 후 나가기 -> 마을 창고로")
+                    return
+                self.tidy_seen = tn
+                self.log("[즉시 정리] 마을로 나가지 못함 (6번): 판이 끝나면 마을 창고에서 정리")
         if self.busy:
             self._stalled(now, "게임 위에 창이 열려 있음 (대장장이·인벤토리·웨이포인트 창이 아닌데 이 문구가 계속 나오면 알려 주세요)")
             return

@@ -324,6 +324,11 @@ class Remote:
                     if cb:
                         cb(on)
                     return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
+                if u.path == "/api/tidy_now" and method == "POST":
+                    cb = getattr(remote, "tidy_now", None)
+                    if cb:
+                        cb()
+                    return self._send(200, b"{}", "application/json")
                 if u.path == "/api/limits" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)
