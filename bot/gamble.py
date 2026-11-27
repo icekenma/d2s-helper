@@ -54,6 +54,9 @@ def judge(tip, s):
     digits (the OCR reads the game's '+3' as '하' or '*3'): the n-th OCR line with '기술' is the n-th line
     whose '기술' picture scores high."""
     lines, img = tipread.read(tip, s)
+    named = [l for l in lines if l.get("color") not in (None, "none") and l.get("words", 1) > 0]
+    if named and named[0].get("color") == "blue":
+        return "no", "마법 아이템 (강화가 안 됨: 무조건 판매)"
     mask = tipread.binarize(img).astype(np.float32)
     sk_lines = []                            # (score, first number) of lines that may hold '기술', top down
     best = 0.0
