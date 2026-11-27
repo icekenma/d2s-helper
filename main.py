@@ -544,7 +544,9 @@ class App(tk.Tk):
             return
         self.gamble_stop.clear()
         st.update(on=True, n=0, msg="시작")
-        self._say("%s에서 도박 시작: 화살통을 사서 '+3 아마존 기술'이 나올 때까지 (아니면 바로 판매)" % who)
+        gcfg = self._gamble_cfg()
+        self._say("%s에서 도박 시작: 화살통을 사서 [%s]이 나올 때까지 (아니면 바로 판매, 마법 아이템은 무조건 판매)"
+                  % (who, gamble.describe(gcfg)))
 
         def notify(title, body):
             try:
@@ -563,7 +565,7 @@ class App(tk.Tk):
                 return
             io = GameIO(TITLE)
             try:
-                gamble.run(io, BASE, lambda m: self.q.put(("log", m)), self.gamble_stop, st, notify)
+                gamble.run(io, BASE, lambda m: self.q.put(("log", m)), self.gamble_stop, st, notify, gcfg)
             except Exception as e:
                 self.q.put(("log", "도박 오류: %s" % e))
             finally:
@@ -571,6 +573,22 @@ class App(tk.Tk):
                 io.close()
                 self.io_lock.release()
         threading.Thread(target=work, daemon=True).start()
+
+    def _gamble_cfg(self):
+        from bot import gamble
+        g = self.cfg.get("gamble") or {}
+        want = [{"k": str(x.get("k")), "min": float(x.get("min") or 0)} for x in g.get("want", [])
+                if isinstance(x, dict) and x.get("k") in gamble.OPT][:8]
+        return {"item": "quiver", "match": "any" if g.get("match") == "any" else "all",
+                "want": want if "want" in g else gamble.DEFAULT["want"]}
+
+    def _set_gamble_cfg(self, d, who="휴대폰"):
+        from bot import gamble
+        self.cfg["gamble"] = d
+        self.cfg["gamble"] = self._gamble_cfg()
+        save_cfg(self.cfg)
+        self._say("%s에서 도박 조건 변경: %s" % (who, gamble.describe(self.cfg["gamble"])))
+        self._share()
 
     def _tidy_now(self, who="휴대폰"):
         """'인벤토리 즉시 정리': out of the stage now, the stash in town, then on hunting."""
@@ -1043,6 +1061,8 @@ class App(tk.Tk):
                        "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
                        "limits": self._limits_state(), "play": self._play(),
                        "gamble": dict(getattr(self, "gamble_st", None) or {"on": False}),
+                       "gamble_cfg": self._gamble_cfg(),
+                       "gamble_opts": [[k, lb] for k, lb, _t, _sk in __import__("bot.gamble", fromlist=["x"]).OPTIONS],
                        "climb": bool(self.cfg.get("climb", False)), "climb_ok": getattr(self, "climb_ok", 0),
                        "climb_fails": getattr(self, "climb_fails", 0), "climb_max": CLIMB_FAILS,
                        "ess_check": bool(self.engine is not None and self.engine.state.get("ess_check")),
@@ -1067,6 +1087,7 @@ class App(tk.Tk):
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
             self.remote.gamble = lambda on: self.q.put(("gamble", on))
+            self.remote.gamble_cfg = lambda d: self.q.put(("gamble_cfg", d))
             self.remote.ess_check = lambda: self.q.put(("ess_check", None))
             self.remote.inv_view = lambda: self.q.put(("inv_view", None))
             self.remote.sell_now = lambda d: self.q.put(("sell_now", d))
@@ -1210,6 +1231,8 @@ class App(tk.Tk):
                     self._set_limits(p)
                 elif kind == "gamble":
                     self._gamble(p)
+                elif kind == "gamble_cfg":
+                    self._set_gamble_cfg(p)
                 elif kind == "tidy_now":
                     self._tidy_now()
                 elif kind == "ess_check":

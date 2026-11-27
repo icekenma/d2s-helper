@@ -360,6 +360,18 @@ class Remote:
                     if cb:
                         cb()
                     return self._send(200, b'{"ok":true}', "application/json")
+                if u.path == "/api/gamble_cfg" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
+                        d = {"match": "any" if d.get("match") == "any" else "all",
+                             "want": [{"k": str(x["k"])[:24], "min": float(x.get("min") or 0)} for x in d.get("want", [])][:8]}
+                    except Exception:
+                        return self._send(400, b'{"error":"gamble_cfg"}', "application/json")
+                    cb = getattr(remote, "gamble_cfg", None)
+                    if cb:
+                        cb(d)
+                    return self._send(200, json.dumps(d, ensure_ascii=False).encode("utf-8"), "application/json")
                 if u.path == "/api/gamble" and method == "POST":
                     try:
                         n = int(self.headers.get("Content-Length") or 0)

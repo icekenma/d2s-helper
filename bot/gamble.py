@@ -49,53 +49,98 @@ def gamble_open(norm):
     return _find(norm, "title", (0, 0, 420, 160), 0.8) is not None or _find(norm, "reroll", (0, 380, 420, 560), 0.8) is not None
 
 
-def judge(tip, s):
-    """-> ("hit" | "no" | "unsure", why). The words come from the Windows OCR, the level from the game's own
-    digits (the OCR reads the game's '+3' as '하' or '*3'): the n-th OCR line with '기술' is the n-th line
-    whose '기술' picture scores high."""
+# options that can be asked for: key -> (label, does the OCR line (no spaces) hold it, skill line?)
+OPTIONS = [
+    ("amazon_skill", "아마존 기술 레벨", lambda u: "아마존기술" in u and "전용" not in u, True),
+    ("bow_skill", "활과 석궁 기술", lambda u: "활과석궁" in u and "기술" in u, True),
+    ("passive_skill", "지속 효과 및 마법 기술", lambda u: "지속효과" in u and "기술" in u, True),
+    ("javelin_skill", "창과 투창 기술", lambda u: "투창" in u and "기술" in u, True),
+    ("ed", "% 피해 증가", lambda u: "피해증가" in u and "최대" not in u and "방어" not in u, False),
+    ("max_dmg", "최대 피해", lambda u: "최대피해" in u, False),
+    ("min_dmg", "최소 피해", lambda u: "최소피해" in u, False),
+    ("ias", "% 공격 속도", lambda u: "공격속도" in u, False),
+    ("ar", "공격 등급", lambda u: "공격등급" in u, False),
+    ("pierce", "% 관통", lambda u: "관통" in u, False),
+    ("deadly", "% 치명적 공격", lambda u: "치명적공격" in u, False),
+    ("crush", "% 강타 확률", lambda u: "강타" in u, False),
+    ("dex", "민첩", lambda u: u.endswith("민첩"), False),
+    ("str", "힘", lambda u: u.endswith("힘"), False),
+    ("life", "생명력", lambda u: u.endswith("생명력"), False),
+    ("res_all", "% 모든 저항", lambda u: "모든저항" in u, False),
+    ("ll", "% 생명력 훔침", lambda u: "생명력훔침" in u, False),
+]
+OPT = {k: (label, test, skill) for k, label, test, skill in OPTIONS}
+DEFAULT = {"item": "quiver", "match": "all", "want": [{"k": "amazon_skill", "min": 3}]}
+
+
+def describe(cfg):
+    w = [x for x in (cfg or DEFAULT).get("want", []) if x.get("k") in OPT]
+    if not w:
+        return "조건 없음"
+    j = " 그리고 " if (cfg or DEFAULT).get("match", "all") == "all" else " 또는 "
+    return j.join("+%s %s 이상" % (x.get("min"), OPT[x["k"]][0]) for x in w)
+
+
+def judge(tip, s, cfg=None):
+    """-> ("hit" | "no" | "unsure", why). Each wanted option: its line is found by the Windows OCR's words,
+    its value read from the game's own digits on that line (the OCR reads '+3' as '하' or '*3'): an OCR
+    line is matched to the game line at the same height."""
+    cfg = cfg or DEFAULT
+    want = [x for x in cfg.get("want", []) if x.get("k") in OPT]
+    if not want:
+        return "unsure", "도박 조건이 없음 (휴대폰 도박 조건에서 정해 주세요)"
     lines, img = tipread.read(tip, s)
     named = [l for l in lines if l.get("color") not in (None, "none") and l.get("words", 1) > 0]
     if named and named[0].get("color") == "blue":
         return "no", "마법 아이템 (강화가 안 됨: 무조건 판매)"
     mask = tipread.binarize(img).astype(np.float32)
-    sk_lines = []                            # (score, first number) of lines that may hold '기술', top down
-    best = 0.0
-    for l in lines:
-        if l.get("color") in ("blue", "yellow", "orange", "other"):
-            sc = scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2])
-            best = max(best, sc)
-            if sc >= SKILL_LINE:
-                sk_lines.append((sc, (l.get("numbers") or [None])[0]))
-    if best < SKILL_NONE:
-        return "no", "기술 줄 없음 (그림 %.2f)" % best
-    got = namer.ocr_now([tip])
+    if all(OPT[x["k"]][2] for x in want):
+        best = 0.0
+        for l in lines:
+            if l.get("color") in ("blue", "yellow", "orange", "other"):
+                best = max(best, scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2]))
+        if best < SKILL_NONE:
+            return "no", "기술 줄 없음 (그림 %.2f)" % best
+    got = namer.ocr_now([tip], with_y=True)
     if got is None:
         return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음: %s" % (namer.LAST_ERR[0] or "원인 모름")
     texts = got[0] if got else []
     if not texts:
         return "unsure", "정보창 글자를 못 읽음"
-    ocr_sk = [t for t in texts if "기술" in t.replace(" ", "")]
-    for k, t in enumerate(ocr_sk):
+    f = s / tipread.SCALE                   # work pixels -> the info box's pixels
+    found = {}
+    for t, y in texts:
         u = t.replace(" ", "")
-        if "아마존기술" not in u or "전용" in u:
-            continue                          # a skill tab ('활과 석궁 기술 (아마존 전용)') or another class
-        n = None
-        if len(ocr_sk) == len(sk_lines):
-            n = sk_lines[k][1]
-        elif len(sk_lines) == 1:
-            n = sk_lines[0][1]
-        if n is None:
-            m = re.search(r"(\d+)아마존기술", u)
-            n = int(m.group(1)[-1]) if m else None
-        if n is None:
-            return "unsure", "'아마존 기술' 줄의 숫자를 못 읽음: %s (기술 줄 %d개 / 글자 %d줄)" % (t, len(sk_lines), len(ocr_sk))
-        if n >= WANT_N:
-            return "hit", "+%d 아마존 기술 (%s)" % (n, t)
-        return "no", "+%d 아마존 기술" % n
-    return "no", "아마존 기술 없음 (%s)" % " / ".join(ocr_sk[:3] or texts[:3])
+        for x in want:
+            k = x["k"]
+            if k in found or not OPT[k][1](u):
+                continue
+            num = None
+            if y is not None:
+                near = min(named, key=lambda l: abs((l["y0"] + l["y1"]) / 2.0 * f - y), default=None)
+                if near is not None and abs((near["y0"] + near["y1"]) / 2.0 * f - y) <= 14 * s:
+                    num = (near.get("numbers") or [None])[0]
+            if num is None:
+                m = re.search(r"(\d+)", u)
+                num = int(m.group(1)) if m and k not in ("amazon_skill", "bow_skill", "passive_skill", "javelin_skill") else None
+            found[k] = (num, t)
+    got_ok, bits = [], []
+    for x in want:
+        k, need = x["k"], float(x.get("min") or 0)
+        if k not in found:
+            got_ok.append(False)
+            bits.append("%s 없음" % OPT[k][0])
+            continue
+        num, t = found[k]
+        if num is None:
+            return "unsure", "'%s' 줄의 숫자를 못 읽음: %s" % (OPT[k][0], t)
+        got_ok.append(num >= need)
+        bits.append("+%s %s" % (num, OPT[k][0]))
+    ok = all(got_ok) if cfg.get("match", "all") == "all" else any(got_ok)
+    return ("hit" if ok else "no"), ", ".join(bits)
 
 
-def run(io, base_dir, log, stop, status, notify):
+def run(io, base_dir, log, stop, status, notify, cfg=None):
     """Gamble until the wanted quiver comes, the window closes, or stop is set."""
     _load(base_dir)
     if "quiver" not in _tpl:
@@ -160,7 +205,7 @@ def run(io, base_dir, log, stop, status, notify):
             if tip is None:
                 verdict, why = "unsure", "정보창이 안 뜸 (게임 창이 뒤에 있으면 앞으로 가져와 주세요)"
             else:
-                verdict, why = judge(tip, geo.s)
+                verdict, why = judge(tip, geo.s, cfg)
             status.update(n=n, msg=why, rerolls=rerolls)
             if verdict == "hit":
                 msg = "도박 %d번째에 원하는 화살통이 나옴: %s (인벤토리 %d열 %d줄, %.0f분)" % (n, why, c0 + 1, r0 + 1,

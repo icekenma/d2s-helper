@@ -55,6 +55,12 @@ $out | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 -Path $outPath
 '''
 
 
+PS_Y = PS.replace("$out[$p] = @($r.Lines | ForEach-Object { $_.Text })",
+                  "$out[$p] = @($r.Lines | ForEach-Object { $w = $_.Words[0].BoundingRect; "
+                  "('' + [int]($w.Y + $w.Height / 2)) + \"`t\" + $_.Text })")
+assert PS_Y != PS
+
+
 def _load():
     with _lock:
         p = paths.p(CACHE)
@@ -164,9 +170,10 @@ def ocr_maybe():
     return os.name == "nt" and _now_ok[0] is not False
 
 
-def ocr_now(images, timeout=25):
+def ocr_now(images, timeout=25, with_y=False):
     """Read several info boxes right now with the Windows OCR, in one go (one PowerShell start, ~2-4 s).
-    -> list of line lists (one per image, [] when unread), or None when the OCR cannot run on this PC."""
+    -> list of line lists (one per image, [] when unread), or None when the OCR cannot run on this PC.
+    with_y: each line is (text, middle y in the info box's own pixels) instead of the text alone."""
     if _now_ok[0] is False and time.time() - _now_no[0] > 300:
         _now_ok[0] = None                     # (Korean OCR may have been installed since)
     if os.name != "nt" or _now_ok[0] is False or not images:
@@ -177,11 +184,11 @@ def ocr_now(images, timeout=25):
     for i, img in enumerate(images):
         dst = os.path.abspath(os.path.join(work, "r%02d.png" % i))
         plan.append(dst if _prep_arr(img, dst) else None)
-    lst, res, ps1 = (os.path.join(work, x) for x in ("list.txt", "out.json", "ocr.ps1"))
+    lst, res, ps1 = (os.path.join(work, x) for x in ("list.txt", "out.json", "ocr_y.ps1" if with_y else "ocr.ps1"))
     with open(lst, "w", encoding="utf-8") as f:
         f.write("\n".join(p_ for p_ in plan if p_))
     with open(ps1, "w", encoding="utf-8-sig") as f:
-        f.write(PS)
+        f.write(PS_Y if with_y else PS)
     try:
         os.remove(res)
     except OSError:
@@ -217,7 +224,20 @@ def ocr_now(images, timeout=25):
         lines = (got.get(p_) or got.get(p_.replace("/", "\\")) or []) if p_ else []
         if isinstance(lines, str):
             lines = [lines]
-        out.append([re.sub(r"\s+", " ", str(t)).strip() for t in lines if str(t).strip()])
+        clean = [re.sub(r"\s+", " ", str(t)).strip() for t in lines if str(t).strip()]
+        if with_y:
+            ys = []
+            for t in (str(x) for x in lines if str(x).strip()):
+                y_, _, txt = t.partition("\t") if "\t" in t else ("", "", t)
+                txt = re.sub(r"\s+", " ", txt)
+                try:
+                    yv = (float(y_) - 16) / 2.0          # back to the info box's pixels (see _prep_arr)
+                except ValueError:
+                    yv = None
+                ys.append((txt.strip(), yv))
+            out.append(ys)
+        else:
+            out.append(clean)
     return out
 
 
