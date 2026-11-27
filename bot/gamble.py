@@ -17,6 +17,7 @@ TEMPLATES = {"quiver": "gamble_quiver.png", "reroll": "gamble_reroll.png", "titl
 _tpl = {}
 WANT_N = 3                   # '+3 아마존 기술' (or more)
 SKILL_NONE = 0.45            # '기술' picture under this on every line: no skill line at all (no OCR needed)
+SKILL_LINE = 0.6             # a line with '기술' on it (skill lines 0.78-0.80, others up to 0.49)
 
 
 def _load(base_dir):
@@ -49,32 +50,46 @@ def gamble_open(norm):
 
 
 def judge(tip, s):
-    """-> ("hit" | "no" | "unsure", why)."""
+    """-> ("hit" | "no" | "unsure", why). The words come from the Windows OCR, the level from the game's own
+    digits (the OCR reads the game's '+3' as '하' or '*3'): the n-th OCR line with '기술' is the n-th line
+    whose '기술' picture scores high."""
     lines, img = tipread.read(tip, s)
     mask = tipread.binarize(img).astype(np.float32)
-    sk = 0.0
+    sk_lines = []                            # (score, first number) of lines that may hold '기술', top down
+    best = 0.0
     for l in lines:
-        if l.get("color") in ("blue", "yellow", "other"):
-            sk = max(sk, scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2]))
-    if sk < SKILL_NONE:
-        return "no", "기술 줄 없음 (그림 %.2f)" % sk
+        if l.get("color") in ("blue", "yellow", "orange", "other"):
+            sc = scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2])
+            best = max(best, sc)
+            if sc >= SKILL_LINE:
+                sk_lines.append((sc, (l.get("numbers") or [None])[0]))
+    if best < SKILL_NONE:
+        return "no", "기술 줄 없음 (그림 %.2f)" % best
     got = namer.ocr_now([tip])
     if got is None:
         return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음: %s" % (namer.LAST_ERR[0] or "원인 모름")
     texts = got[0] if got else []
     if not texts:
         return "unsure", "정보창 글자를 못 읽음"
-    for t in texts:
+    ocr_sk = [t for t in texts if "기술" in t.replace(" ", "")]
+    for k, t in enumerate(ocr_sk):
         u = t.replace(" ", "")
-        if "아마존기술" in u:
+        if "아마존기술" not in u or "전용" in u:
+            continue                          # a skill tab ('활과 석궁 기술 (아마존 전용)') or another class
+        n = None
+        if len(ocr_sk) == len(sk_lines):
+            n = sk_lines[k][1]
+        elif len(sk_lines) == 1:
+            n = sk_lines[0][1]
+        if n is None:
             m = re.search(r"(\d+)아마존기술", u)
-            if not m:
-                return "unsure", "'아마존 기술' 줄의 숫자를 못 읽음: %s" % t
-            n = int(m.group(1)[-1])            # ('+3' may read as '*3' / '•3': the last digit is the level)
-            if n >= WANT_N:
-                return "hit", t
-            return "no", t
-    return "no", "아마존 기술 없음 (%s)" % " / ".join(texts[:4])
+            n = int(m.group(1)[-1]) if m else None
+        if n is None:
+            return "unsure", "'아마존 기술' 줄의 숫자를 못 읽음: %s (기술 줄 %d개 / 글자 %d줄)" % (t, len(sk_lines), len(ocr_sk))
+        if n >= WANT_N:
+            return "hit", "+%d 아마존 기술 (%s)" % (n, t)
+        return "no", "+%d 아마존 기술" % n
+    return "no", "아마존 기술 없음 (%s)" % " / ".join(ocr_sk[:3] or texts[:3])
 
 
 def run(io, base_dir, log, stop, status, notify):
