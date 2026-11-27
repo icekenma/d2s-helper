@@ -727,7 +727,7 @@ button.ki{width:100%;border:0;text-align:left;font:inherit;color:var(--bone)}
   </div>
   <button type="button" class="tidy" id="tidyNow"><span><b>인벤토리 즉시 정리</b><small id="tidySub">사냥 중이어도 바로 마을 창고에서 정리하고 이어서 사냥</small></span><i aria-hidden="true">⤓</i></button>
   <div class="lim" id="limBox">
-   <div class="lhd"><b>판 시간 제한</b><span id="limNote">지나면 무조건 다음 판</span></div>
+   <div class="lhd"><b>판 시간 제한</b><span id="limNote">보스를 잡은 뒤에만 적용 · 보스 전엔 계속 사냥</span></div>
    <div class="lrow"><span>일반</span><div class="step"><button type="button" data-k="normal" data-d="-10" aria-label="일반 10초 줄임">−</button>
     <output id="limN">-:--</output><button type="button" data-k="normal" data-d="10" aria-label="일반 10초 늘림">+</button></div></div>
    <div class="lrow"><span>패스트</span><div class="step"><button type="button" data-k="fast" data-d="-10" aria-label="패스트 10초 줄임">−</button>
@@ -833,7 +833,7 @@ function limFrom(s){if(!s.limits)return;LIM={normal:s.limits.limit_normal,fast:s
 Array.prototype.forEach.call(document.querySelectorAll(".lim .step button"),function(b){b.onclick=function(){
  limEdit=limEdit||{normal:LIM.normal,fast:LIM.fast};var k=b.dataset.k;limEdit[k]=Math.max(60,Math.min(900,limEdit[k]+(+b.dataset.d)));limShow()}});
 $("limApply").onclick=function(){if(!limEdit)return;var d=limEdit;post("/api/limits",d).then(function(){LIM={normal:d.normal,fast:d.fast};limEdit=null;limShow();
- $("limNote").textContent="바꿈 · 다음 판부터";setTimeout(function(){$("limNote").textContent="지나면 무조건 다음 판"},3000);setTimeout(status,500)})};
+ $("limNote").textContent="바꿈 · 다음 판부터";setTimeout(function(){$("limNote").textContent="보스를 잡은 뒤에만 적용 · 보스 전엔 계속 사냥"},3000);setTimeout(status,500)})};
 /* essence alert: on/off, minutes, test */
 var AL=null,alBusy=0;
 function alertFrom(s){if(!s.alert||Date.now()<alBusy)return;AL=s.alert;alertDraw()}
@@ -940,7 +940,7 @@ function cdDraw(){
  var left=Math.max(0,(CD.end-Date.now())/1000),sec=Math.ceil(left);
  box.className="cd"+(sec<=30?" low":"");
  $("cdNum").textContent=Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0");
- $("cdSub").textContent=sec?"지나면 무조건 다음 판으로":"다음 판으로 이동 중";
+ $("cdSub").textContent=sec?"보스를 잡았으면 다음 판으로 (보스 전엔 계속 사냥)":"다음 판으로 이동 중";
  $("cdBar").style.transform="scaleX("+(left/CD.limit).toFixed(4)+")";
 }
 setInterval(cdDraw,250);

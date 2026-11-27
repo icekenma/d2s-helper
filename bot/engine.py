@@ -38,6 +38,7 @@ for _i in range(1, 13):
 STAGE_LIMIT = 240         # seconds in one stage, then always on to the next run (Esc -> 저장 후 나가기)
 FAST_LIMIT = 160          # the same in 패스트 모드 (2:40)
 FAST_PICK_EXTRA = 40      # 패스트 모드 that also picks up jewels / uniques: time for the pick-up and the smith
+NO_BOSS_CAP = 900         # s: a run with no boss slain this long is taken for stuck (the time limit waits for the boss)
 OVER_GRACE = 90           # s after the boss: the run time limit waits for the pick-up and tidy-up
 
 
@@ -66,6 +67,7 @@ class Engine(threading.Thread):
         self.state = state if state is not None else {}
         self.cleaned_open = False
         self.grace_note = False
+        self.boss_wait_note = False
         self.cfg = cfg
         self.base = base_dir
         self.emit = emit          # emit(kind, payload)
@@ -332,6 +334,7 @@ class Engine(threading.Thread):
         if not si and not self.need_out:
             st["stage_in"] = now
             self.grace_note = False
+            self.boss_wait_note = False
             runlog.start(now, st.get("target", 0))
             self.log("사냥터 입장: %s 뒤에는 무조건 다음 판으로%s" % (limit_text(stage_limit(st)),
                                                                  " (패스트 모드)" if st.get("fast") else ""))
@@ -356,8 +359,17 @@ class Engine(threading.Thread):
             runlog.end(float(st.get("run_text_at") or now), "사냥터를 나감")
             self.log("%s 제한: 이미 사냥터 밖(판 정보 없음)이라 나가지 않음" % limit_text(limit))
         picking = st.get("over") and now - float(st.get("over_at") or now) < OVER_GRACE
-        if si and now - si >= limit and not picking:
-            due, why = True, "사냥터에 들어간 지 %s 지남 (무조건 다음 판)" % limit_text(limit)
+        if si and now - si >= limit and not st.get("over") and now - si < NO_BOSS_CAP:
+            # the boss is not dead yet: the run goes on past the time limit (the user's rule) - only a run
+            # still without a boss after NO_BOSS_CAP is taken for stuck and left
+            if not self.boss_wait_note:
+                self.boss_wait_note = True
+                self.log("%s 지났지만 아직 보스를 안 잡음: 보스를 잡을 때까지 계속 사냥 (%d분 넘으면 막힌 것으로 보고 나감)"
+                         % (limit_text(limit), NO_BOSS_CAP // 60))
+            due, why = False, ""
+        elif si and now - si >= limit and not picking:
+            due, why = True, ("사냥터에 들어간 지 %s 지남 (보스 처치 뒤)" % limit_text(limit) if st.get("over") else
+                              "보스를 못 잡고 %d분 지남: 막힌 것으로 보고 다음 판" % (NO_BOSS_CAP // 60))
         elif si and now - si >= limit and picking and not self.grace_note:
             self.grace_note = True
             self.log("%s 지났지만 보스를 잡고 줍는 중: 줍기가 끝날 때까지 기다림 (보스 처치 뒤 최대 %d초)"
