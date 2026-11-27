@@ -94,13 +94,21 @@ def judge(tip, s, cfg=None):
     if named and named[0].get("color") == "blue":
         return "no", "마법 아이템 (강화가 안 됨: 무조건 판매)"
     mask = tipread.binarize(img).astype(np.float32)
-    if all(OPT[x["k"]][2] for x in want):
-        best = 0.0
-        for l in lines:
-            if l.get("color") in ("blue", "yellow", "orange", "other"):
-                best = max(best, scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2]))
+    best, sk_nums = 0.0, []
+    for l in lines:
+        if l.get("color") in ("blue", "yellow", "orange", "other"):
+            sc = scorer.skill_score(mask[max(0, l["y0"] - 2):l["y1"] + 2])
+            best = max(best, sc)
+            if sc >= SKILL_LINE:
+                sk_nums.append((l.get("numbers") or [None])[0])
+    skill_want = [x for x in want if OPT[x["k"]][2]]
+    if skill_want and cfg.get("match", "all") == "all" or skill_want and len(skill_want) == len(want):
         if best < SKILL_NONE:
             return "no", "기술 줄 없음 (그림 %.2f)" % best
+        top = max([v for v in sk_nums if v is not None] or [0])
+        if sk_nums and None not in sk_nums and all(top < float(x.get("min") or 0) for x in skill_want):
+            # every skill line is below what is asked (the game's own digits): no need to read the words
+            return "no", "기술 +%d (조건 +%s 미만)" % (top, "/".join(str(x.get("min")) for x in skill_want))
     got = namer.ocr_now([tip], with_y=True)
     if got is None:
         return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음: %s" % (namer.LAST_ERR[0] or "원인 모름")
@@ -142,6 +150,8 @@ def judge(tip, s, cfg=None):
                 near = min(named, key=lambda l: abs((l["y0"] + l["y1"]) / 2.0 * f - y), default=None)
                 if near is not None and abs((near["y0"] + near["y1"]) / 2.0 * f - y) <= 14 * s:
                     num = (near.get("numbers") or [None])[0]
+            if num is None and OPT[k][2] and len(sk_nums) == 1:
+                num = sk_nums[0]                  # the one skill line on the item
             if num is None:
                 m = re.search(r"(\d+)", u)
                 num = int(m.group(1)) if m and k not in ("amazon_skill", "bow_skill", "passive_skill", "javelin_skill") else None
@@ -168,7 +178,7 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
     if "quiver" not in _tpl:
         log("도박: 화살통 그림이 없음 (assets/gamble_quiver.png)")
         return
-    n = rerolls = fails = 0
+    n = rerolls = fails = hits = 0
     t0 = time.time()
     status.update(on=True, n=0, msg="도박 시작")
     try:
@@ -195,23 +205,27 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
                     return
                 io.click(*geo.raw(r[0], r[1]))
                 rerolls += 1
-                time.sleep(0.6)
+                time.sleep(0.25)
                 continue
             before = sorter.read_inventory(norm)
             io.click(*geo.raw(q[0], q[1]))
-            time.sleep(0.5)
             sorter._park(io, geo)
-            base = io.grab()
-            if base is None:
-                return
-            nb = geo.normalize(base)
-            after = sorter.read_inventory(nb)
-            new = [(c, r_) for r_ in range(sorter.INV_ROWS) for c in range(sorter.INV_COLS)
-                   if after[r_][c] and not before[r_][c]]
+            new, base, t_buy = [], None, time.time()
+            while time.time() - t_buy < 0.9:            # the bought item shows in the bags
+                base = io.grab()
+                if base is None:
+                    return
+                after = sorter.read_inventory(geo.normalize(base))
+                new = [(c, r_) for r_ in range(sorter.INV_ROWS) for c in range(sorter.INV_COLS)
+                       if after[r_][c] and not before[r_][c]]
+                if new:
+                    break
+                time.sleep(0.06)
             if not new:
                 fails += 1
                 if fails >= 3:
-                    msg = "도박: 3번 연속 아이템이 안 들어옴 (골드 부족이나 인벤토리에 세로 3칸 자리 없음) - 멈춤"
+                    msg = ("도박: 3번 연속 아이템이 안 들어옴 (골드 부족이나 인벤토리에 세로 3칸 자리 없음) - 멈춤 "
+                           "(%d번 시도, 원하는 화살통 %d개)" % (n, hits))
                     log(msg)
                     notify("도박 멈춤", msg)
                     return
@@ -220,38 +234,43 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
             n += 1
             c0 = min(c for c, _ in new)
             r0 = min(r_ for c, r_ in new if c == c0)
+            time.sleep(0.05)
+            g_ = io.grab()                            # (a moment later: the item fully drawn)
+            if g_ is not None:
+                base = g_
             io.move(*geo.raw(*sorter.cell_center(c0, r0)))
-            time.sleep(0.25)
-            hov = io.grab()
-            tip = sorter.tooltip_crop(base, hov, geo) if hov is not None else None
+            tip, t_h = None, time.time()
+            while tip is None and time.time() - t_h < 0.6:   # its info box
+                time.sleep(0.06)
+                hov = io.grab()
+                tip = sorter.tooltip_crop(base, hov, geo) if hov is not None else None
             if tip is None:
                 verdict, why = "unsure", "정보창이 안 뜸 (게임 창이 뒤에 있으면 앞으로 가져와 주세요)"
             else:
                 verdict, why = judge(tip, geo.s, cfg)
             status.update(n=n, msg=why, rerolls=rerolls)
             if verdict == "hit":
-                msg = "도박 %d번째에 원하는 화살통이 나옴: %s (인벤토리 %d열 %d줄, %.0f분)" % (n, why, c0 + 1, r0 + 1,
-                                                                                (time.time() - t0) / 60)
+                hits += 1
+                msg = "도박 %d번째에 원하는 화살통 %d개째: %s (인벤토리 %d열 %d줄에 둠, %.0f분) - 계속 도박" % (
+                    n, hits, why, c0 + 1, r0 + 1, (time.time() - t0) / 60)
                 log(msg)
-                notify("도박 성공", msg)
-                status.update(msg="성공: " + why)
-                return
+                notify("도박 성공 %d개째" % hits, msg)
+                status.update(msg="성공 %d개: %s" % (hits, why), hits=hits)
+                continue                              # kept in the bags; on to the next one
             if verdict == "unsure":
                 msg = "도박 %d번째: 판단이 불확실해 팔지 않고 멈춤 - %s (인벤토리 %d열 %d줄 확인)" % (n, why, c0 + 1, r0 + 1)
                 log(msg)
                 notify("도박 확인 필요", msg)
                 return
-            sorter._park(io, geo)
             io.click(*geo.raw(*sorter.cell_center(c0, r0)), mod="shift")       # sold back to the NPC
-            sold = False
-            for _ in range(5):
-                # (the cursor is moved off first: the cell under it is lit up and looks taken)
-                time.sleep(0.25)
-                sorter._park(io, geo)
+            sorter._park(io, geo)            # (the cell under the cursor is lit up and looks taken)
+            sold, t_s = False, time.time()
+            while time.time() - t_s < 1.2:
                 f = io.grab()
                 if f is not None and not sorter.read_inventory(geo.normalize(f))[r0][c0]:
                     sold = True
                     break
+                time.sleep(0.06)
             if not sold:
                 msg = "도박 %d번째: Shift+클릭으로 팔리지 않음 - 멈춤 (인벤토리 %d열 %d줄)" % (n, c0 + 1, r0 + 1)
                 log(msg)
@@ -259,6 +278,6 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
                 return
             if n % 10 == 0 or n <= 3:
                 log("도박 %d번째 (리롤 %d번): %s -> 판매" % (n, rerolls, why))
-        log("도박: 멈춤 (%d번 시도, 리롤 %d번)" % (n, rerolls))
+        log("도박: 멈춤 (%d번 시도, 리롤 %d번, 원하는 화살통 %d개)" % (n, rerolls, hits))
     finally:
         status.update(on=False)
