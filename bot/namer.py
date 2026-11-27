@@ -23,6 +23,8 @@ _cache = {"d": None, "t": 0.0}
 
 PS = r'''
 $ErrorActionPreference = "Stop"
+$outPath = $args[1]
+trap { ("ERR: " + $_.Exception.Message) | Set-Content -Encoding UTF8 -Path $outPath; exit 3 }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
@@ -31,8 +33,11 @@ $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRunt
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
 $null = [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
-$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage((New-Object Windows.Globalization.Language 'ko'))
-if ($engine -eq $null) { "NOKO" | Set-Content -Encoding UTF8 -Path $args[1]; exit 2 }
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
+$engine = $null
+try { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage((New-Object Windows.Globalization.Language 'ko-KR')) } catch { }
+if ($engine -eq $null) { try { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() } catch { } }
+if ($engine -eq $null -or -not ("" + $engine.RecognizerLanguage.LanguageTag).StartsWith("ko")) { "NOKO" | Set-Content -Encoding UTF8 -Path $outPath; exit 2 }
 $out = @{}
 foreach ($p in (Get-Content -Encoding UTF8 -Path $args[0])) {
   if (-not $p) { continue }
@@ -46,7 +51,7 @@ foreach ($p in (Get-Content -Encoding UTF8 -Path $args[0])) {
     $s.Dispose()
   } catch { $out[$p] = @() }
 }
-$out | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 -Path $args[1]
+$out | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 -Path $outPath
 '''
 
 
@@ -147,6 +152,7 @@ def _prep_arr(img, dst):
     return ok
 
 
+LAST_ERR = [""]           # why the last OCR call failed (shown in the log)
 _now_ok = [None]          # Windows OCR answered (True) / is missing here (False) / not tried yet (None)
 _now_no = [0.0]           # when it was found missing (tried again 5 minutes later)
 
@@ -181,15 +187,25 @@ def ocr_now(images, timeout=25):
     except OSError:
         pass
     try:
-        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, lst, res],
-                       timeout=timeout, capture_output=True,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        pr = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, lst, res],
+                            timeout=timeout, capture_output=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as e:
+        LAST_ERR[0] = "PowerShell 실행 실패: %s" % e
+        return None
+    try:
         with open(res, "r", encoding="utf-8-sig") as f:
             raw = f.read().strip()
-    except Exception:
+    except OSError:
+        err = (pr.stderr or b"").decode("utf-8", "replace").strip() or (pr.stderr or b"").decode("cp949", "replace").strip()
+        LAST_ERR[0] = "결과 없음 (종료 코드 %s) %s" % (pr.returncode, err[:300])
         return None
     if raw == "NOKO":
+        LAST_ERR[0] = "한국어 OCR 엔진을 만들지 못함 (한국어 광학 문자 인식이 설치돼 있지 않음)"
         _now_ok[0], _now_no[0] = False, time.time()
+        return None
+    if raw.startswith("ERR:"):
+        LAST_ERR[0] = raw[:300]
         return None
     try:
         got = json.loads(raw) if raw else {}
@@ -263,7 +279,9 @@ def step(log, limit=20):
         except OSError:
             log("아이템 이름 읽기(윈도우 OCR): 결과가 없음")
             return -1
-        if raw == "NOKO":
+        if raw == "NOKO" or raw.startswith("ERR:"):
+            LAST_ERR[0] = raw[:300] if raw.startswith("ERR:") else "한국어 OCR 엔진을 만들지 못함"
+            log("아이템 이름 읽기(윈도우 OCR): %s" % LAST_ERR[0])
             return -1
         try:
             got = json.loads(raw) if raw else {}

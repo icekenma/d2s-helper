@@ -60,7 +60,7 @@ def judge(tip, s):
         return "no", "기술 줄 없음 (그림 %.2f)" % sk
     got = namer.ocr_now([tip])
     if got is None:
-        return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음 (install_ocr.bat 실행 필요)"
+        return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음: %s" % (namer.LAST_ERR[0] or "원인 모름")
     texts = got[0] if got else []
     if not texts:
         return "unsure", "정보창 글자를 못 읽음"
