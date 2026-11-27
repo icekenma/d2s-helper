@@ -56,8 +56,9 @@ $out | ConvertTo-Json -Depth 3 | Set-Content -Encoding UTF8 -Path $outPath
 
 
 PS_Y = PS.replace("$out[$p] = @($r.Lines | ForEach-Object { $_.Text })",
-                  "$out[$p] = @($r.Lines | ForEach-Object { $w = $_.Words[0].BoundingRect; "
-                  "('' + [int]($w.Y + $w.Height / 2)) + \"`t\" + $_.Text })")
+                  "$out[$p] = @($r.Lines | ForEach-Object { $yy = ''; "
+                  "try { $w = ($_.Words | Select-Object -First 1).BoundingRect; $yy = '' + [int]($w.Y + $w.Height / 2) } catch { }; "
+                  "$yy + \"`t\" + $_.Text })")
 assert PS_Y != PS
 
 

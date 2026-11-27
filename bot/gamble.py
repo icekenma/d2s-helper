@@ -106,6 +106,16 @@ def judge(tip, s, cfg=None):
         return "unsure", "윈도우 한국어 글자 인식(OCR)을 쓸 수 없음: %s" % (namer.LAST_ERR[0] or "원인 모름")
     texts = got[0] if got else []
     if not texts:
+        # (the line heights could not be had: the plain lines, matched to the game's lines by their order)
+        plain = namer.ocr_now([tip])
+        texts = [(t, None) for t in (plain[0] if plain else [])]
+        if texts:
+            body = [l for l in named]
+            for k, (t, _) in enumerate(texts):
+                if k < len(body):
+                    texts[k] = (t, (body[k]["y0"] + body[k]["y1"]) / 2.0 * (s / tipread.SCALE)) \
+                        if len(texts) == len(body) else (t, None)
+    if not texts:
         return "unsure", "정보창 글자를 못 읽음"
     f = s / tipread.SCALE                   # work pixels -> the info box's pixels
     found = {}
