@@ -109,6 +109,12 @@ def fill(items, folder="collected", key="name"):
     return items
 
 
+def _fac(h, w):
+    """Twice the size reads best, but the Windows OCR refuses a picture over 2600 pixels a side (it then
+    returns nothing at all): a big box is made smaller instead."""
+    return max(0.5, min(2.0, 2400.0 / max(1, h, w)))
+
+
 def _prepare(src, dst):
     """The info box as dark text on white, twice the size (what OCR reads best). The whole box goes in:
     the name is picked from the lines that come back (see _pick)."""
@@ -120,12 +126,13 @@ def _prepare(src, dst):
     text[:, : int(w * 0.03)] = False                 # the box's frame / what is beside it
     text[:, int(w * 0.97):] = False
     out = np.where(text, 0, 255).astype(np.uint8)
-    out = cv2.resize(out, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+    f = _fac(h, w)
+    out = cv2.resize(out, None, fx=f, fy=f, interpolation=cv2.INTER_NEAREST)
     out = cv2.copyMakeBorder(out, 16, 16, 16, 16, cv2.BORDER_CONSTANT, value=255)
     ok, buf = cv2.imencode(".png", out)
     if ok:
         buf.tofile(dst)
-    return ok
+    return f if ok else 0
 
 
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
@@ -151,12 +158,13 @@ def _prep_arr(img, dst):
     text[:, : int(w * 0.03)] = False
     text[:, int(w * 0.97):] = False
     out = np.where(text, 0, 255).astype(np.uint8)
-    out = cv2.resize(out, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+    f = _fac(h, w)
+    out = cv2.resize(out, None, fx=f, fy=f, interpolation=cv2.INTER_NEAREST)
     out = cv2.copyMakeBorder(out, 16, 16, 16, 16, cv2.BORDER_CONSTANT, value=255)
     ok, buf = cv2.imencode(".png", out)
     if ok:
         buf.tofile(dst)
-    return ok
+    return f if ok else 0
 
 
 LAST_ERR = [""]           # why the last OCR call failed (shown in the log)
@@ -181,10 +189,12 @@ def ocr_now(images, timeout=25, with_y=False):
         return None
     work = paths.p("ocr_now")
     os.makedirs(work, exist_ok=True)
-    plan = []
+    plan, facs = [], {}
     for i, img in enumerate(images):
         dst = os.path.abspath(os.path.join(work, "r%02d.png" % i))
-        plan.append(dst if _prep_arr(img, dst) else None)
+        fac = _prep_arr(img, dst)
+        plan.append(dst if fac else None)
+        facs[dst] = fac or 2.0
     lst, res, ps1 = (os.path.join(work, x) for x in ("list.txt", "out.json", "ocr_y.ps1" if with_y else "ocr.ps1"))
     with open(lst, "w", encoding="utf-8") as f:
         f.write("\n".join(p_ for p_ in plan if p_))
@@ -220,6 +230,7 @@ def ocr_now(images, timeout=25, with_y=False):
     except ValueError:
         return None
     _now_ok[0] = True
+    LAST_ERR[0] = "" if got else ("빈 결과 " + (pr.stderr or b"").decode("utf-8", "replace").strip()[:200])
     out = []
     for p_ in plan:
         lines = (got.get(p_) or got.get(p_.replace("/", "\\")) or []) if p_ else []
@@ -232,7 +243,7 @@ def ocr_now(images, timeout=25, with_y=False):
                 y_, _, txt = t.partition("\t") if "\t" in t else ("", "", t)
                 txt = re.sub(r"\s+", " ", txt)
                 try:
-                    yv = (float(y_) - 16) / 2.0          # back to the info box's pixels (see _prep_arr)
+                    yv = (float(y_) - 16) / facs.get(p_, 2.0)   # back to the info box's pixels (see _prep_arr)
                 except ValueError:
                     yv = None
                 ys.append((txt.strip(), yv))

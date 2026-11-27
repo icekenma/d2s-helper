@@ -116,7 +116,19 @@ def judge(tip, s, cfg=None):
                     texts[k] = (t, (body[k]["y0"] + body[k]["y1"]) / 2.0 * (s / tipread.SCALE)) \
                         if len(texts) == len(body) else (t, None)
     if not texts:
-        return "unsure", "정보창 글자를 못 읽음"
+        try:                                      # kept for a look: the box and what the OCR was given
+            from . import paths
+            d = paths.p("gamble_debug")
+            os.makedirs(d, exist_ok=True)
+            cv2.imwrite(os.path.join(d, "tip.png"), tip)
+            src = os.path.join(paths.p("ocr_now"), "r00.png")
+            if os.path.isfile(src):
+                with open(src, "rb") as a_, open(os.path.join(d, "ocr_input.png"), "wb") as b_:
+                    b_.write(a_.read())
+        except Exception:
+            pass
+        return "unsure", "정보창 글자를 못 읽음 (정보창 %dx%d, %s) - 데이터 폴더 gamble_debug에 사진 저장" % (
+            tip.shape[1], tip.shape[0], namer.LAST_ERR[0] or "OCR이 빈 결과")
     f = s / tipread.SCALE                   # work pixels -> the info box's pixels
     found = {}
     for t, y in texts:
