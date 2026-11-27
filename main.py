@@ -278,6 +278,7 @@ class App(tk.Tk):
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="진행 상황", command=self._open_runs).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="인벤토리 즉시 정리", command=lambda: self._tidy_now("PC")).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="도박 시작/멈춤", command=lambda: self._gamble(None, "PC")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
@@ -517,6 +518,56 @@ class App(tk.Tk):
             except Exception as e:
                 log("판매 예약 오류: %s" % e)
             finally:
+                io.close()
+                self.io_lock.release()
+        threading.Thread(target=work, daemon=True).start()
+
+    def _gamble(self, on=None, who="휴대폰"):
+        """도박: in the town gamble window, buy arrow quivers until one has '+3 아마존 기술' (kept, phone
+        told), selling every other one straight back. on=None toggles."""
+        from bot import gamble
+        st = getattr(self, "gamble_st", None)
+        if st is None:
+            st = self.gamble_st = {"on": False, "n": 0, "msg": ""}
+            self.gamble_stop = threading.Event()
+        if on is None:
+            on = not st.get("on")
+        if not on:
+            if st.get("on"):
+                self.gamble_stop.set()
+                self._say("%s에서 도박 멈춤 요청" % who)
+            return
+        if st.get("on"):
+            return
+        if self.engine is not None:
+            self._say("%s에서 도박: 자동 사냥 중에는 못 함 - 도우미를 멈추고 마을 도박 창을 연 뒤 시작" % who)
+            return
+        self.gamble_stop.clear()
+        st.update(on=True, n=0, msg="시작")
+        self._say("%s에서 도박 시작: 화살통을 사서 '+3 아마존 기술'이 나올 때까지 (아니면 바로 판매)" % who)
+
+        def notify(title, body):
+            try:
+                from bot import alert as al
+                topic = (self.cfg.get("alert") or {}).get("topic")
+                if topic:
+                    al.send(topic, title, body, tags="moneybag")
+            except Exception:
+                pass
+
+        def work():
+            from bot.gameio import GameIO
+            if not self.io_lock.acquire(timeout=10):
+                self.q.put(("log", "도박: 다른 작업 중이라 시작 못 함"))
+                st["on"] = False
+                return
+            io = GameIO(TITLE)
+            try:
+                gamble.run(io, BASE, lambda m: self.q.put(("log", m)), self.gamble_stop, st, notify)
+            except Exception as e:
+                self.q.put(("log", "도박 오류: %s" % e))
+            finally:
+                st["on"] = False
                 io.close()
                 self.io_lock.release()
         threading.Thread(target=work, daemon=True).start()
@@ -991,6 +1042,7 @@ class App(tk.Tk):
                        "log": self.logbuf[-60:], "stage": int(self.cfg.get("stage", 0) or 0),
                        "fast": bool(self.cfg.get("fast_mode", False)), "fast_ext": self._fast_ext(), "alert": self.watch.state(),
                        "limits": self._limits_state(), "play": self._play(),
+                       "gamble": dict(getattr(self, "gamble_st", None) or {"on": False}),
                        "climb": bool(self.cfg.get("climb", False)), "climb_ok": getattr(self, "climb_ok", 0),
                        "climb_fails": getattr(self, "climb_fails", 0), "climb_max": CLIMB_FAILS,
                        "ess_check": bool(self.engine is not None and self.engine.state.get("ess_check")),
@@ -1014,6 +1066,7 @@ class App(tk.Tk):
             self.remote.set_alert = lambda d: self.q.put(("alert", d))
             self.remote.set_limits = lambda d: self.q.put(("limits", d))
             self.remote.tidy_now = lambda: self.q.put(("tidy_now", None))
+            self.remote.gamble = lambda on: self.q.put(("gamble", on))
             self.remote.ess_check = lambda: self.q.put(("ess_check", None))
             self.remote.inv_view = lambda: self.q.put(("inv_view", None))
             self.remote.sell_now = lambda d: self.q.put(("sell_now", d))
@@ -1155,6 +1208,8 @@ class App(tk.Tk):
                     self._set_alert(p)
                 elif kind == "limits":
                     self._set_limits(p)
+                elif kind == "gamble":
+                    self._gamble(p)
                 elif kind == "tidy_now":
                     self._tidy_now()
                 elif kind == "ess_check":

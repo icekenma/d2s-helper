@@ -360,6 +360,17 @@ class Remote:
                     if cb:
                         cb()
                     return self._send(200, b'{"ok":true}', "application/json")
+                if u.path == "/api/gamble" and method == "POST":
+                    try:
+                        n = int(self.headers.get("Content-Length") or 0)
+                        d = json.loads(self.rfile.read(min(n, 256)) or b"{}")
+                        on = bool(d.get("on"))
+                    except Exception:
+                        return self._send(400, b'{"error":"gamble"}', "application/json")
+                    cb = getattr(remote, "gamble", None)
+                    if cb:
+                        cb(on)
+                    return self._send(200, json.dumps({"on": on}).encode("utf-8"), "application/json")
                 if u.path == "/api/tidy_now" and method == "POST":
                     cb = getattr(remote, "tidy_now", None)
                     if cb:
