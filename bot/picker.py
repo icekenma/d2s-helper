@@ -487,6 +487,7 @@ class Picker:
         self.labels, self.label_time = [], 0.0
         self.idle_since = None
         self.over_since = None      # when the hunt was seen to be over in this run
+        self.boss_note = False
         self.stage_start = None     # when collecting finished and the wrap-up began
         self.npc_since, self.npc_seen, self.npc_note = None, False, 0.0
         self.gave_up = False
@@ -898,6 +899,7 @@ class Picker:
         sorter.RUN_ID[0] = time.time()            # essence stacks are read once in each run
         self.bag_res, self.bag_at = None, 0.0     # the bags' last check in this run (and what it found)
         self.over_since, self.stage_start = None, None
+        self.boss_note = False
         self.portal_first, self.gate_at = 0.0, 0.0
         self.target, self.idle_since, self.ignore, self.history = None, None, [], []
         self.tries, self.arrived = {}, None
@@ -2037,6 +2039,21 @@ class Picker:
                          % (", ".join(str(x) for x in bv[-4:]) or "없음",
                             ", ".join(str(x) for x in self.act_votes[-8:]) or "없음"))
 
+    def _boss_ok(self, now, notice):
+        """May the hunt be taken as over (boss slain)? Never in the first 20 s of a run (the portal one
+        arrives by stands there). In 패스트 / 패스트 & 노파밍 - which leave at once after the boss - only
+        the '차원문이 열렸습니다' notice counts, not a portal seen on screen: a wrong guess there ends the
+        run before the boss (then the run time limit is what ends a run whose notice was missed)."""
+        si = float(self.state.get("stage_in") or 0)
+        if si and now - si < 20:
+            return False
+        if not notice and (self.opts.get("nofarm") or self.opts.get("fast_mode")):
+            if not self.boss_note:
+                self.boss_note = True
+                self.log("화면에 포탈이 보이지만 '차원문이 열렸습니다' 문구가 없어 보스 처치로 보지 않음 (패스트 모드)")
+            return False
+        return True
+
     def _fast_count(self):
         """패스트 모드: open the inventory, read the burning-essence stacks, close it again."""
         frame = self.io.grab()
@@ -2292,7 +2309,7 @@ class Picker:
         self.portal = find_portal_screen(frame, s)
         if self.over_since is None:
             try:
-                if sorter.portal_opened(sorter.Geo(frame).normalize(frame)) >= 0.55:
+                if sorter.portal_opened(sorter.Geo(frame).normalize(frame)) >= 0.55 and self._boss_ok(now, True):
                     if now - self.gate_at > 30:
                         self.log("'차원문이 열렸습니다' 확인")
                     self.gate_at = now
@@ -2688,7 +2705,7 @@ class Picker:
                 if now - self.portal_last > 1.0:
                     self.portal_first = now
                 self.portal_last = now
-                if now - self.portal_first >= 5.0:
+                if now - self.portal_first >= 5.0 and self._boss_ok(now, False):
                     self.over_since = now
                     self.last_gain = now
                     self.state["over"] = True
@@ -2718,7 +2735,7 @@ class Picker:
             self.hunt_tab = 3
             self.log("미니맵 켜짐: 내 위치 확인")
         if self.over_since is None:
-            if now - self.gate_at < 30:
+            if now - self.gate_at < 30 and self._boss_ok(now, True):
                 self.over_since = now
                 self.last_gain = now
                 self.state["over"] = True
@@ -2729,7 +2746,7 @@ class Picker:
                 if now - self.portal_last > 1.0:
                     self.portal_first = now
                 self.portal_last = now
-                if now - self.portal_first >= 4.0:
+                if now - self.portal_first >= 4.0 and self._boss_ok(now, False):
                     self.over_since = now
                     self.last_gain = now
                     self.state["over"] = True
