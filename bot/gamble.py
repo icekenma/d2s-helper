@@ -221,9 +221,16 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
                 return
             sorter._park(io, geo)
             io.click(*geo.raw(*sorter.cell_center(c0, r0)), mod="shift")       # sold back to the NPC
-            time.sleep(0.4)
-            f = io.grab()
-            if f is None or sorter.read_inventory(geo.normalize(f))[r0][c0]:
+            sold = False
+            for _ in range(5):
+                # (the cursor is moved off first: the cell under it is lit up and looks taken)
+                time.sleep(0.25)
+                sorter._park(io, geo)
+                f = io.grab()
+                if f is not None and not sorter.read_inventory(geo.normalize(f))[r0][c0]:
+                    sold = True
+                    break
+            if not sold:
                 msg = "도박 %d번째: Shift+클릭으로 팔리지 않음 - 멈춤 (인벤토리 %d열 %d줄)" % (n, c0 + 1, r0 + 1)
                 log(msg)
                 notify("도박 멈춤", msg)
