@@ -172,13 +172,52 @@ def judge(tip, s, cfg=None):
     return ("hit" if ok else "no"), ", ".join(bits)
 
 
+def _to_right(io, geo, cell, w, h):
+    """Move the item whose top-left cell is `cell` (w x h cells) to the rightmost free place of the bags.
+    -> its new top-left cell, or None (it is put back where it was if it could not be placed)."""
+    f = io.grab()
+    if f is None:
+        return None
+    inv = sorter.read_inventory(geo.normalize(f))
+    own = {(cell[0] + i, cell[1] + j) for i in range(w) for j in range(h)}
+    target = None
+    for tc in range(sorter.INV_COLS - w, -1, -1):
+        for tr in range(0, sorter.INV_ROWS - h + 1):
+            cells = {(tc + i, tr + j) for i in range(w) for j in range(h)}
+            if all(not inv[r_][c_] or (c_, r_) in own for c_, r_ in cells):
+                target = (tc, tr)
+                break
+        if target is not None:
+            break
+    if target is None or target[0] <= cell[0]:
+        return cell if target is not None else None      # already as far right as it can go
+    def centre(tl):
+        return (sorter.INV_X + (tl[0] + w / 2.0) * sorter.CELL, sorter.INV_Y + (tl[1] + h / 2.0) * sorter.CELL)
+    io.click(*geo.raw(*centre(cell)))                 # picked up onto the cursor
+    time.sleep(0.15)
+    io.click(*geo.raw(*centre(target)))               # put down at the right end
+    time.sleep(0.15)
+    sorter._park(io, geo)
+    f = io.grab()
+    if f is None:
+        return None
+    inv = sorter.read_inventory(geo.normalize(f))
+    if inv[target[1]][target[0]] and not inv[cell[1]][cell[0]]:
+        return target
+    if not inv[cell[1]][cell[0]] and not inv[target[1]][target[0]]:
+        io.click(*geo.raw(*centre(cell)))             # still on the cursor: back where it was
+        time.sleep(0.15)
+        sorter._park(io, geo)
+    return None
+
+
 def run(io, base_dir, log, stop, status, notify, cfg=None):
     """Gamble until the wanted quiver comes, the window closes, or stop is set."""
     _load(base_dir)
     if "quiver" not in _tpl:
         log("도박: 화살통 그림이 없음 (assets/gamble_quiver.png)")
         return
-    n = rerolls = fails = hits = 0
+    n = rerolls = fails = hits = unsure = 0
     t0 = time.time()
     status.update(on=True, n=0, msg="도박 시작")
     try:
@@ -258,10 +297,21 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
                 status.update(msg="성공 %d개: %s" % (hits, why), hits=hits)
                 continue                              # kept in the bags; on to the next one
             if verdict == "unsure":
-                msg = "도박 %d번째: 판단이 불확실해 팔지 않고 멈춤 - %s (인벤토리 %d열 %d줄 확인)" % (n, why, c0 + 1, r0 + 1)
-                log(msg)
-                notify("도박 확인 필요", msg)
-                return
+                # not sold on a guess: moved to the right end of the bags for a look later, and on we go
+                cols = sorted({c for c, _ in new})
+                rows = sorted({r_ for _, r_ in new})
+                where = _to_right(io, geo, (cols[0], rows[0]), len(cols), len(rows))
+                unsure += 1
+                if where is None:
+                    msg = ("도박 %d번째: 판단이 불확실한데 오른쪽 끝으로 옮기지 못함 - 멈춤 (%s, 인벤토리 %d열 %d줄 확인)"
+                           % (n, why, c0 + 1, r0 + 1))
+                    log(msg)
+                    notify("도박 확인 필요", msg)
+                    return
+                log("도박 %d번째: 판단이 불확실해 팔지 않고 인벤토리 %d열 %d줄로 옮겨 둠 (%s) - 계속 도박"
+                    % (n, where[0] + 1, where[1] + 1, why))
+                status.update(msg="확인 필요 %d개 (오른쪽 끝): %s" % (unsure, why), unsure=unsure)
+                continue
             io.click(*geo.raw(*sorter.cell_center(c0, r0)), mod="shift")       # sold back to the NPC
             sorter._park(io, geo)            # (the cell under the cursor is lit up and looks taken)
             sold, t_s = False, time.time()
@@ -278,6 +328,6 @@ def run(io, base_dir, log, stop, status, notify, cfg=None):
                 return
             if n % 10 == 0 or n <= 3:
                 log("도박 %d번째 (리롤 %d번): %s -> 판매" % (n, rerolls, why))
-        log("도박: 멈춤 (%d번 시도, 리롤 %d번, 원하는 화살통 %d개)" % (n, rerolls, hits))
+        log("도박: 멈춤 (%d번 시도, 리롤 %d번, 원하는 화살통 %d개, 확인 필요 %d개)" % (n, rerolls, hits, unsure))
     finally:
         status.update(on=False)
