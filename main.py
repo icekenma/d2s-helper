@@ -124,7 +124,8 @@ class App(tk.Tk):
         self.hot = keyboard.GlobalHotKeys({"<f7>": lambda: self.q.put(("rec", None)),
                                            "<f8>": lambda: self.q.put(("toggle", None)),
                                            "<f9>": lambda: self.q.put(("halt", None)),
-                                           "<f10>": lambda: self.q.put(("scan", None))})
+                                           "<f10>": lambda: self.q.put(("scan", None)),
+                                           "<f11>": lambda: self.q.put(("gamble_key", None))})
         self.hot.daemon = True
         self.hot.start()
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -174,7 +175,7 @@ class App(tk.Tk):
         self.l_cd.pack(anchor="e")
         self.l_cd_note = tk.Label(cd, text="다음 판까지", bg=BG, fg=DIM, font=(FONT, 9))
         self.l_cd_note.pack(anchor="e")
-        tk.Label(top, text="F9 즉시 중지 · F10 장비 스캔 · 게임 창은 뒤에 있어도 됨", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
+        tk.Label(top, text="F9 즉시 중지 · F10 장비 스캔 · F11 도박 시작/멈춤 · 게임 창은 뒤에 있어도 됨", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
 
         sf = tk.Frame(self, bg=BG)
         sf.pack(fill="x", padx=20, pady=(0, 10))
@@ -278,7 +279,7 @@ class App(tk.Tk):
         ttk.Button(rb, text="모은 아이템 보기", command=self._open_items).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="진행 상황", command=self._open_runs).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="인벤토리 즉시 정리", command=lambda: self._tidy_now("PC")).pack(side="right", padx=(0, 8))
-        ttk.Button(rb, text="도박 시작/멈춤", command=lambda: self._gamble(None, "PC")).pack(side="right", padx=(0, 8))
+        ttk.Button(rb, text="도박 시작/멈춤 (F11)", command=lambda: self._gamble(None, "PC")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="보관 목록", command=lambda: self._open_items("keep")).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="장비 스캔 (F10)", command=self._gear_scan).pack(side="right", padx=(0, 8))
         ttk.Button(rb, text="게임을 '가려져도 동작' 모드로 다시 실행", command=self._relaunch).pack(side="right", padx=8)
@@ -1249,6 +1250,8 @@ class App(tk.Tk):
                     self.cfg["keep_star"] = n
                     save_cfg(self.cfg)
                     self._say("휴대폰에서 보관 기준 변경: 보관 목록 중 별 %d개 이상만 보관함으로" % n)
+                elif kind == "gamble_key":
+                    self._gamble(None, "F11")
                 elif kind == "scan":
                     self._gear_scan()
                 elif kind == "restart":
@@ -1259,6 +1262,8 @@ class App(tk.Tk):
                 elif kind == "rec":
                     self.rec_toggle()
                 elif kind == "halt":
+                    if (getattr(self, "gamble_st", None) or {}).get("on"):
+                        self._gamble(False, "F9")         # F9 (즉시 중지) also stops the gambling
                     self.halt()
         except queue.Empty:
             pass
